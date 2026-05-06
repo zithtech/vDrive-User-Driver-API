@@ -6,6 +6,7 @@ import admin from '../../config/firebase';
 import { ReferralController } from '../referrals/referral.controller';
 import { ReferralService } from '../referrals/referral.service';
 import { logger } from '../../shared/logger';
+import { EmailService } from '../email/email.service';
 
 export const UserService = {
   async getUsers(page: number = 1, limit: number = 10, search?: string) {
@@ -28,6 +29,12 @@ export const UserService = {
         message: 'User not found or could not be created',
       };
     }
+
+    if (data.email && data.role !== 'driver') {
+      EmailService.sendWelcomeEmail(data.email, data.first_name || data.full_name || 'Customer')
+        .catch(err => logger.error(`Welcome email failed for ${data.email}: ${err}`));
+    }
+
     if (data.referral_code) {
       const valid = await ReferralService.validateReferralCode(data.referral_code, user.id as string)
       if(!valid.valid){
@@ -75,8 +82,8 @@ export const UserService = {
     return user;
   },
 
-  async blockUser(id: string) {
-    const user = await UserRepository.updateUserStatus(id, UserStatus.BLOCKED);
+  async blockUser(id: string, notes?: string) {
+    const user = await UserRepository.updateUserStatus(id, UserStatus.BLOCKED, notes);
     if (!user) {
       throw { statusCode: 404, message: 'User not found' };
     }
@@ -84,15 +91,16 @@ export const UserService = {
   },
 
   async unblockUser(id: string) {
-    const user = await UserRepository.updateUserStatus(id, UserStatus.ACTIVE);
+    const notes = 'User unblocked by admin';
+    const user = await UserRepository.updateUserStatus(id, UserStatus.ACTIVE, notes);
     if (!user) {
       throw { statusCode: 404, message: 'User not found' };
     }
     return user;
   },
 
-  async disableUser(id: string) {
-    const user = await UserRepository.updateUserStatus(id, UserStatus.INACTIVE);
+  async disableUser(id: string, notes?: string) {
+    const user = await UserRepository.updateUserStatus(id, UserStatus.INACTIVE, notes);
     if (!user) {
       throw { statusCode: 404, message: 'User not found' };
     }
@@ -100,6 +108,7 @@ export const UserService = {
   },
 
   async enableUser(id: string) {
+    const notes = 'User enabled by admin';
     const user = await UserRepository.updateUserStatus(id, UserStatus.ACTIVE);
     if (!user) {
       throw { statusCode: 404, message: 'User not found' };
@@ -107,16 +116,17 @@ export const UserService = {
     return user;
   },
 
-  async suspendUser(id: string) {
-    const user = await UserRepository.updateUserStatus(id, UserStatus.SUSPENDED);
+  async suspendUser(id: string , notes?: string) {
+    const user = await UserRepository.updateUserStatus(id, UserStatus.SUSPENDED, notes);
     if (!user) {
       throw { statusCode: 404, message: 'User not found' };
     }
     return user;
   },
 
-  async unsuspendUser(id: string) {
-    const user = await UserRepository.updateUserStatus(id, UserStatus.ACTIVE);
+  async unsuspendUser(id: string ) {
+    const notes = 'User unsuspended by admin';
+    const user = await UserRepository.updateUserStatus(id, UserStatus.ACTIVE, notes);
     if (!user) {
       throw { statusCode: 404, message: 'User not found' };
     }

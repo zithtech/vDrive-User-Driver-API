@@ -38,12 +38,12 @@ export const TripService = {
     return await TripRepository.getAllTripsWithChanges();
   },
 
-  async getTripByUserId(id: string, role: string) {
-    const trip = await TripRepository.findByUserId(id, role);
-    if (!trip) {
+  async getTripByUserId(id: string, role: string, limit?: number, tab?: string) {
+    const result = await TripRepository.findByUserId(id, role, limit, tab);
+    if (!result || !result.data) {
       throw { statusCode: 404, message: 'Trip not found' };
     }
-    return trip;
+    return result;
   },
 
   async getTripById(id: string) {
@@ -788,6 +788,13 @@ export const TripService = {
     });
 
     const driverId = trip.driver_id;
+    const userId = trip.user_id;
+
+    if (userId) {
+      // 📈 Update persistent statistics in the users table
+      await UserRepository.incrementStats(userId);
+    }
+
     if (driverId) {
       // 📈 Update persistent statistics in the drivers table
       await DriverRepository.incrementStats(driverId, trip.total_fare || 0);

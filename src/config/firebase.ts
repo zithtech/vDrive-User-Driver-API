@@ -1,5 +1,4 @@
 import * as admin from 'firebase-admin';
-import path from 'path';
 import { logger } from '../shared/logger';
 import { NotificationPayload, NotificationResult } from '../modules/notifications/notification.types';
 
@@ -24,13 +23,15 @@ const initializeFirebase = (): void => {
     if (admin.apps.length > 0) return;
 
     try {
-        const serviceAccountPath = path.resolve(
-            __dirname,
-            './vdrive-3edf7-firebase-adminsdk-fbsvc-3bfe5944c2.json'
-        );
+        if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+            throw new Error('FIREBASE_SERVICE_ACCOUNT environment variable is not set');
+        }
+
+        // Parse the service account JSON from the environment variable
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
         admin.initializeApp({
-            credential: admin.credential.cert(serviceAccountPath),
+            credential: admin.credential.cert(serviceAccount),
         });
 
         logger.info('Firebase Admin initialized successfully');

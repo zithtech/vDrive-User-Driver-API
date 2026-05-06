@@ -7,7 +7,7 @@ import jwt, { JwtPayload, SignOptions } from 'jsonwebtoken';
 import config from '../../config';
 import { UserRepository } from '../users/user.repository';
 import { OnboardingStatus, DriverOnboardingStatus, UserRole, UserStatus } from '../../enums/user.enums';
-import { isInvalidUser } from '../../utilities/helper';
+import { isInvalidUser, generateOTP } from '../../utilities/helper';
 import { User } from '../users/user.model';
 import { logger } from '../../shared/logger';
 import { DriverNotifications, UserNotifications } from '../notifications';
@@ -67,6 +67,7 @@ async function createNewUser(role: string, phone_number: string, device_id: stri
       ...newUser,
       role: UserRole.CUSTOMER,
       status: UserStatus.ACTIVE,
+      otp: generateOTP(),
     };
   }
 

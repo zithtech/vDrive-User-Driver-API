@@ -51,14 +51,16 @@ export const TripController = {
     try {
       const id = req?.params?.id as string;
       const role = req.body.role as string;
-      const trip = await TripService.getTripByUserId(id, role);
-      return successResponse(res, 200, 'Trip fetched successfully', trip);
+      const limit = req.body.limit ? parseInt(req.body.limit, 10) : undefined;
+      const tab = req.body.tab as string | undefined;
+      const tripData = await TripService.getTripByUserId(id, role, limit, tab);
+      return successResponse(res, 200, 'Trip fetched successfully', tripData);
     } catch (err: any) {
       logger.error(`getTripById error: ${err.message}`);
       next(err);
     }
   },
-
+  
   async createTrip(req: Request, res: Response, next: NextFunction) {
     try {
       const { coupon_code, ...tripDataRaw } = req.body;

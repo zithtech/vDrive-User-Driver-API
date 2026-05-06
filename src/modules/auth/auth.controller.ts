@@ -375,11 +375,33 @@ export const AuthController = {
 
       // ✅ 4. Check user status
       const userStatus = role === 'driver' ? userData.status : userData.status; // Both use .status
-      if (userStatus === 'banned' || userStatus === 'deleted') {
+      if (userStatus === 'banned' || userStatus === 'deleted' || userData.status === 'blocked' || userData.status === 'inactive' || userData.status === 'suspended') {
+        const notes = userData.notes || userData.reason || 'No reason provided by admin';
+        const status = userData.status;
+        if(status === 'suspended'){
+          return res.status(403).json({
+            success: false,
+            code: 'ACCOUNT_SUSPENDED',
+            message: 'Your account has been suspended',
+            notes: notes || 'No reason provided by admin',
+            status: status || 'suspended',
+          });
+        }
+        if(status === 'blocked'){
+          return res.status(403).json({
+            success: false,
+            code: 'ACCOUNT_BLOCKED',
+            message: 'Your account has been blocked',
+            notes: notes || 'No reason provided by admin',
+            status: status || 'blocked',
+          });
+        }
         return res.status(403).json({
           success: false,
           code: 'ACCOUNT_DISABLED',
           message: 'Your account has been disabled',
+          notes: notes || 'No reason provided by admin',
+          status: status || 'disabled',
         });
       }
 

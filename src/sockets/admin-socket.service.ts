@@ -1,11 +1,19 @@
-import { logger } from "../shared/logger"; // comment to trigger restart
+import { logger } from "../shared/logger";
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import { Server } from 'socket.io';
+import config from '../config';
 import config from "../config";
 
 let adminSocket: ClientSocket;
 
 export function connectToAdminBackend(userIo: Server) {
+    const adminUrl = config.adminApiUrl;
+
+    logger.info(`Connecting to Admin Backend WebSocket at ${adminUrl}/internal`);
+
+    // socket.io-client handles http:// → ws:// upgrade automatically.
+    // The /internal segment is the Socket.IO namespace, not an HTTP path.
+    adminSocket = ioClient(`${adminUrl}/internal`, {
     adminSocket = ioClient(config.adminInternalSocketUrl, { // ✅ Admin backend should be on a DIFFERENT port
         transports: ['websocket'],
         auth: { token: process.env.INTERNAL_SERVICE_SECRET },
@@ -57,15 +65,21 @@ export function connectToAdminBackend(userIo: Server) {
     // ✅ Listen for commands FROM admin backend and forward to users
     adminSocket.on('broadcast_to_users', (data) => {
         logger.info('Admin sent broadcast:', data);
-        userIo.emit('announcement', data); // ✅ userIo is now properly scoped
+        userIo.emit('announcement', data);
     });
 
     adminSocket.on('disconnect', (reason) => {
         logger.warn(`Lost connection to Admin Backend: ${reason}`);
     });
 
-    adminSocket.on('connect_error', (err) => {
-        logger.error(`Admin Backend connection error: ${err.message}`);
+    adminSocket.on('connect_error', (err: any) => {
+        logger.error(
+            `Admin Backend connection error` +
+            ` | URL: ${adminUrl}/internal` +
+            ` | Message: ${err.message}` +
+            ` | Type: ${err.type ?? 'unknown'}` +
+            ` | Description: ${JSON.stringify(err.description ?? {})}`
+        );
     });
 }
 

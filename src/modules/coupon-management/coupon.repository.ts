@@ -85,11 +85,13 @@ export const CouponRepository = {
     // Basic logic: Get all active coupons that are generic or assigned to this user
     // This can be expanded based on user_eligibility rules
     const result = await query(
-      `SELECT * FROM coupons 
-       WHERE is_active = TRUE 
-       AND (user_eligibility = 'ALL' OR user_eligibility = $1)
-       AND valid_until >= CURRENT_TIMESTAMP
-       ORDER BY created_at DESC`,
+      `SELECT c.*, 
+        (SELECT COUNT(*) FROM coupon_usages cu WHERE cu.coupon_id = c.id AND cu.user_id = $1) as user_usage_count
+       FROM coupons c
+       WHERE c.is_active = TRUE 
+       AND (c.user_eligibility = 'ALL' OR c.user_eligibility = $1)
+       AND c.valid_until >= CURRENT_TIMESTAMP
+       ORDER BY c.created_at DESC`,
       [userId]
     );
     return result.rows;

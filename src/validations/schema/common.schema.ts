@@ -181,3 +181,7 @@ export const referralCodeRule = Joi.string()
     'string.pattern.base': 'Invalid referral code format',
     'string.base': 'Referral code must be a string',
   });
+
+export const notesRule = Joi.string().optional().messages({
+  'string.base': 'notes must be a string',
+});

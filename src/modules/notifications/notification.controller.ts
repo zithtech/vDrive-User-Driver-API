@@ -105,8 +105,8 @@ export const NotificationController = {
             }
 
             // Additional validations: expiry, budget, user eligibility
-            // We use CouponService.validateCoupon for logic consistency
-            await CouponService.validateCoupon(couponCode, userId, 0); // Amount 0 just to check eligibility/expiry
+            // We use CouponService.validateCoupon for logic consistency, ignoring rideAmount
+            await CouponService.validateCoupon(couponCode, userId, 0, true);
 
             // 2. Build topic: coupon_SAVE50
             const topicName = `coupon_${couponCode}`;

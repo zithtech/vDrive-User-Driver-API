@@ -1,6 +1,8 @@
 import { PromoRepository } from './promo.repository';
 import { TripRepository } from '../trip/trip.repository';
 import { ValidatePromoResponse } from './promo.model';
+import { PromoNotificationRepository } from './promo-notification.repository';
+import { logger } from '../../shared/logger';
 
 export const PromoService = {
   async validatePromo(code: string, driverId: string, currentAmount: number): Promise<ValidatePromoResponse> {
@@ -91,6 +93,79 @@ export const PromoService = {
     return await PromoRepository.findAvailableForDriver(driverId);
   },
 
+   /**
+     * Cron job logic: Process pending email notification campaigns in batches
+     */
+    async processPendingNotifications() {
+      const { EmailService } = require('../email/email.service');
+  
+      const campaigns = await PromoNotificationRepository.getPendingCampaigns();
+      if (campaigns.length === 0) return;
+  
+      for (const coupon of campaigns) {
+        logger.info(`Processing notification campaign for coupon: ${coupon.code} (${coupon.id})`);
+        
+        try {
+          await PromoNotificationRepository.lockCampaign(coupon.id);
+  
+          let offset = 0;
+          const batchSize = 50;
+          let totalSentInThisRun = 0;
+          let hasMoreUsers = true;
+  
+          while (hasMoreUsers && totalSentInThisRun < 500) { // Safety limit per cron run
+            const users = await PromoNotificationRepository.getTargetDrivers(
+              coupon.notify_target, 
+              coupon.notify_specific_driver_id, 
+              batchSize, 
+              offset
+            );
+  
+            if (users.length === 0) {
+              hasMoreUsers = false;
+              break;
+            }
+  
+            for (const user of users) {
+              try {
+                // Check if already sent to avoid duplicates in case of crash/restart
+                const alreadySent = await PromoNotificationRepository.hasReceivedNotification(coupon.id, user.id);
+                if (alreadySent) continue;
+  
+                await EmailService.sendCouponEmail(user.email, user.full_name, coupon);
+                await PromoNotificationRepository.logNotification(coupon.id, user.id, 'SENT');
+                totalSentInThisRun++;
+              } catch (error) {
+                logger.error(`Error sending email to user ${user.id}: ${error}`);
+                await PromoNotificationRepository.logNotification(coupon.id, user.id, 'FAILED', String(error));
+              }
+            }
+  
+            offset += batchSize;
+            
+            // If we reached the end of users for this target type
+            if (users.length < batchSize) {
+              hasMoreUsers = false;
+            }
+  
+            // Small delay between batches to be nice to the SMTP server
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+  
+          // Update status. If hasMoreUsers is true, it means we hit the safety limit, 
+          // so we keep it in PROCESSING to be picked up again (or reset to PENDING if we want).
+          // For simplicity, if we hit the limit, we'll mark as PENDING again but the lock will be reset.
+          const nextStatus = hasMoreUsers ? 'PENDING' : 'COMPLETED';
+          await PromoNotificationRepository.updateCampaignStatus(coupon.id, nextStatus, totalSentInThisRun);
+          
+          logger.info(`Campaign for ${coupon.code}: Sent ${totalSentInThisRun} emails. Status: ${nextStatus}`);
+  
+        } catch (error) {
+          logger.error(`Failed to process campaign for coupon ${coupon.id}: ${error}`);
+          await PromoNotificationRepository.updateCampaignStatus(coupon.id, 'FAILED', 0);
+        }
+      }
+    },
   async getReferralRewardsForDriver(driverId: string) {
     const rewards = await PromoRepository.findReferralRewardsForDriver(driverId);
     

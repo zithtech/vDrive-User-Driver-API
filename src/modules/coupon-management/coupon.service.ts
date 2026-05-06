@@ -1,12 +1,13 @@
 import { CouponRepository } from './coupon.repository';
 import { logger } from '../../shared/logger';
 import { sendToTopic, sendToMultipleDevices } from '../../config/firebase';
+import { CouponNotificationRepository } from './coupon-notification.repository';
 
 export const CouponService = {
   /**
    * Validates a coupon for a specific ride
    */
-  async validateCoupon(code: string, userId: string, rideAmount: number) {
+  async validateCoupon(code: string, userId: string, rideAmount: number, ignoreAmount: boolean = false) {
     const coupon = await CouponRepository.findByCode(code);
 
     if (!coupon) {
@@ -28,7 +29,7 @@ export const CouponService = {
     }
 
     // Check minimum ride amount
-    if (rideAmount < parseFloat(coupon.min_ride_amount)) {
+    if (!ignoreAmount && rideAmount < parseFloat(coupon.min_ride_amount)) {
       throw {
         statusCode: 400,
         message: `Min ride amount of ${coupon.min_ride_amount} required to use this coupon`
@@ -133,6 +134,80 @@ export const CouponService = {
         }
       } catch (error) {
         logger.error(`Error sending expiry notification for coupon ${coupon.id}: ${error}`);
+      }
+    }
+  },
+
+  /**
+   * Cron job logic: Process pending email notification campaigns in batches
+   */
+  async processPendingNotifications() {
+    const { EmailService } = require('../email/email.service');
+
+    const campaigns = await CouponNotificationRepository.getPendingCampaigns();
+    if (campaigns.length === 0) return;
+
+    for (const coupon of campaigns) {
+      logger.info(`Processing notification campaign for coupon: ${coupon.code} (${coupon.id})`);
+      
+      try {
+        await CouponNotificationRepository.lockCampaign(coupon.id);
+
+        let offset = 0;
+        const batchSize = 50;
+        let totalSentInThisRun = 0;
+        let hasMoreUsers = true;
+
+        while (hasMoreUsers && totalSentInThisRun < 500) { // Safety limit per cron run
+          const users = await CouponNotificationRepository.getTargetUsers(
+            coupon.notify_target, 
+            coupon.notify_specific_user_id, 
+            batchSize, 
+            offset
+          );
+
+          if (users.length === 0) {
+            hasMoreUsers = false;
+            break;
+          }
+
+          for (const user of users) {
+            try {
+              // Check if already sent to avoid duplicates in case of crash/restart
+              const alreadySent = await CouponNotificationRepository.hasReceivedNotification(coupon.id, user.id);
+              if (alreadySent) continue;
+
+              await EmailService.sendCouponEmail(user.email, user.full_name, coupon);
+              await CouponNotificationRepository.logNotification(coupon.id, user.id, 'SENT');
+              totalSentInThisRun++;
+            } catch (error) {
+              logger.error(`Error sending email to user ${user.id}: ${error}`);
+              await CouponNotificationRepository.logNotification(coupon.id, user.id, 'FAILED', String(error));
+            }
+          }
+
+          offset += batchSize;
+          
+          // If we reached the end of users for this target type
+          if (users.length < batchSize) {
+            hasMoreUsers = false;
+          }
+
+          // Small delay between batches to be nice to the SMTP server
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        // Update status. If hasMoreUsers is true, it means we hit the safety limit, 
+        // so we keep it in PROCESSING to be picked up again (or reset to PENDING if we want).
+        // For simplicity, if we hit the limit, we'll mark as PENDING again but the lock will be reset.
+        const nextStatus = hasMoreUsers ? 'PENDING' : 'COMPLETED';
+        await CouponNotificationRepository.updateCampaignStatus(coupon.id, nextStatus, totalSentInThisRun);
+        
+        logger.info(`Campaign for ${coupon.code}: Sent ${totalSentInThisRun} emails. Status: ${nextStatus}`);
+
+      } catch (error) {
+        logger.error(`Failed to process campaign for coupon ${coupon.id}: ${error}`);
+        await CouponNotificationRepository.updateCampaignStatus(coupon.id, 'FAILED', 0);
       }
     }
   }

@@ -120,11 +120,23 @@ export const TripRepository = {
   },
 
 
- async findByUserId(userId: string, role: string): Promise<Trip[]> {
+ async findByUserId(userId: string, role: string, limit?: number, tab?: string): Promise<{ data: Trip[], total: number }> {
     let result;
+    const limitClause = limit ? ` LIMIT ${limit}` : '';
+
+    let tabFilter = '';
+    if (tab === 'completed') {
+        tabFilter = "AND t.trip_status = 'COMPLETED'";
+    } else if (tab === 'cancelled') {
+        tabFilter = "AND t.trip_status IN ('CANCELLED', 'MID_CANCELLED')";
+    } else if (tab === 'upcoming') {
+        tabFilter = "AND t.booking_type = 'SCHEDULED' AND t.trip_status IN ('REQUESTED', 'ACCEPTED', 'ARRIVING', 'ARRIVED')";
+    }
+
     if (role === UserRole.CUSTOMER) {
       result = await query(
         `SELECT t.*, 
+                count(*) over() as full_count,
                 jsonb_build_object(
                 'id', u.id,
                 'full_name', u.full_name,
@@ -157,15 +169,16 @@ export const TripRepository = {
        LEFT JOIN trip_changes tc ON t.trip_id = tc.trip_id 
        LEFT JOIN drivers d ON t.driver_id = d.id
        WHERE t.user_id = $1 
-       -- AND t.trip_status IN ('REQUESTED' ,'CANCELLED', 'COMPLETED','MID_CANCELLED')
+       ${tabFilter}
        GROUP BY t.trip_id, u.id, d.id
-       ORDER BY t.created_at DESC;`,
+       ORDER BY t.created_at DESC${limitClause};`,
         [userId]
       );
     }
     else if (role === UserRole.DRIVER) {
       result = await query(
         `SELECT t.*, 
+                count(*) over() as full_count,
                 jsonb_build_object(
                 'id', u.id,
                 'full_name', u.full_name,
@@ -198,14 +211,23 @@ export const TripRepository = {
        LEFT JOIN drivers d ON t.driver_id = d.id
        LEFT JOIN trip_changes tc ON t.trip_id = tc.trip_id 
        WHERE t.driver_id = $1 
-       AND t.trip_status IN ('REQUESTED' ,'CANCELLED', 'COMPLETED')
+       ${tabFilter}
        GROUP BY t.trip_id, u.id, d.id
-       ORDER BY t.created_at DESC;`,
+       ORDER BY t.created_at DESC${limitClause};`,
         [userId]
       );
     }
 
-    return result?.rows || [];
+    const rows = result?.rows || [];
+    const total = rows.length > 0 ? parseInt(rows[0].full_count, 10) : 0;
+    
+    // Remove the full_count from the actual data returned
+    const data = rows.map(row => {
+      const { full_count, ...rest } = row;
+      return rest;
+    });
+
+    return { data, total };
   },
 
   async createTrip(data: Partial<Trip>): Promise<Trip | null> {

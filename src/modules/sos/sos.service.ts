@@ -189,7 +189,7 @@ export class SosService {
   }
 
   private static async sendWebhookWithRetry(eventType: string, message: string, data: any, retries = 3) {
-    const url = `${config.adminBackendUrl || 'http://localhost:3000'}/api/webhooks/driver-events`;
+    const url = `${config.adminBackendUrl}/api/webhooks/driver-events`;
     const payload = { eventType, message, data };
     const headers = { 'x-api-key': config.internalServiceApiKey };
 
