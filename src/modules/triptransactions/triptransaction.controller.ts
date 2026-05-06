@@ -32,7 +32,7 @@ export const TripTransactionController = {
             const offset = parseQueryInt(String(req.query.offset ?? ''), 0);
 
             const result = await TripTransactionService.getTripHistory(id as string, { limit, offset });
-            console.log(result, "result")
+            logger.info(`Trip history fetch result: ${JSON.stringify(result)}`);
             if (!result) {
                 throw { statusCode: 204, message: 'Trip transaction history is empty' };
             }

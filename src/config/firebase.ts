@@ -3,6 +3,21 @@ import path from 'path';
 import { logger } from '../shared/logger';
 import { NotificationPayload, NotificationResult } from '../modules/notifications/notification.types';
 
+// ─── Ride notification types: sent as DATA-ONLY FCM messages ──────────────────
+// Android auto-displays the `notification` field in the system tray when the app
+// is in the background. For ride events, this creates a duplicate because our
+// background handler (notifee) already displays one. By omitting `notification`
+// for these types, the app retains full control over display and deduplication.
+const RIDE_NOTIFICATION_TYPES = new Set([
+    'NEW_RIDE_REQUEST',
+    'ASSIGNED_RIDE',
+    'RIDE_ASSIGNED',
+    'TRIP_ASSIGNED',
+    'ride_request',
+    'RIDE_CANCELLED',
+    'BOOKING_CANCELLED',
+]);
+
 // ─── Initialize Firebase Admin ────────────────────────────────────────────────
 const initializeFirebase = (): void => {
     // ✅ Prevent re-initialization
@@ -31,34 +46,51 @@ initializeFirebase();
 const buildMessage = (
     fcmToken: string,
     payload: NotificationPayload
-): admin.messaging.Message => ({
-    token: fcmToken,
-    notification: {
-        title: payload.title,
-        body: payload.body,
-    },
-    data: {
-        type: payload.type,
-        ...(payload.data ?? {}),
-    },
-    android: {
-        priority: 'high',
-        notification: {
-            sound: payload.sound || 'default',
-            channelId: payload.androidChannelId || 'ride_requests',
+): admin.messaging.Message => {
+    const isRideType = RIDE_NOTIFICATION_TYPES.has(payload.type);
+
+    return {
+        token: fcmToken,
+
+        // 🛡️ Only include `notification` for NON-ride events.
+        // Ride events use data-only messages so the app has full control
+        // over display and deduplication (prevents Android auto-display).
+        ...(!isRideType && {
+            notification: {
+                title: payload.title || 'vDrive Alert',
+                body: payload.body || 'Tap to view details',
+            },
+        }),
+
+        data: {
+            type: payload.type || 'default',
+            // Always pass title/body in data so the app can display via notifee
+            title: payload.title || 'vDrive Alert',
+            body: payload.body || 'Tap to view details',
+            ...(payload.data ?? {}),
         },
-    },
-    apns: {
-        headers: { 'apns-priority': '10' },
-        payload: {
-            aps: {
-                sound: payload.sound || 'default',
-                contentAvailable: true,
-                badge: 1,
+        android: {
+            priority: 'high',
+            // Only include android.notification for non-ride events
+            ...(!isRideType && {
+                notification: {
+                    sound: payload.sound || 'default',
+                    channelId: payload.androidChannelId || 'ride_requests',
+                },
+            }),
+        },
+        apns: {
+            headers: { 'apns-priority': '10' },
+            payload: {
+                aps: {
+                    sound: payload.sound || 'default',
+                    contentAvailable: true,
+                    badge: isRideType ? 0 : 1,
+                },
             },
         },
-    },
-});
+    };
+};
 
 // ─── Handle FCM Errors ────────────────────────────────────────────────────────
 const handleFcmError = (err: any, fcmToken: string): NotificationResult => {

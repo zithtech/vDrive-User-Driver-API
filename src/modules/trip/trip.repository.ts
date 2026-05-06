@@ -2,6 +2,7 @@ import { UserRole } from '../../enums/user.enums';
 import { query } from '../../shared/database';
 import { Trip, TripDetailsType } from './trip.model';
 import { TripChanges } from './tripChanges.model';
+import { logger } from '../../shared/logger';
 
 export const TripRepository = {
   //user-driver
@@ -101,7 +102,8 @@ export const TripRepository = {
                 'profile_pic_url', d.profile_pic_url,
                 'rating', d.rating,
                 'current_lat', d.current_lat,
-                'current_lng', d.current_lng
+                'current_lng', d.current_lng,
+                'total_trips', d.total_trips
                 -- 'vehicle_number', d.vehicle_number,
                 -- 'vehicle_model', d.vehicle_model,
                 -- 'vehicle_type', d.vehicle_type
@@ -142,7 +144,8 @@ export const TripRepository = {
                 'profile_pic_url', d.profile_pic_url,
                 'rating', d.rating,
                 'current_lat', d.current_lat,
-                'current_lng', d.current_lng
+                'current_lng', d.current_lng,
+                'total_trips', d.total_trips
                -- 'vehicle_number', d.vehicle_number,
                -- 'vehicle_model', d.vehicle_model,
                -- 'vehicle_type', d.vehicle_type
@@ -182,7 +185,8 @@ export const TripRepository = {
                 'profile_pic_url', d.profile_pic_url,
                 'rating', d.rating,
                 'current_lat', d.current_lat,
-                'current_lng', d.current_lng
+                'current_lng', d.current_lng,
+                'total_trips', d.total_trips
                -- 'vehicle_number', d.vehicle_number,
                -- 'vehicle_model', d.vehicle_model,
                -- 'vehicle_type', d.vehicle_type
@@ -274,7 +278,8 @@ export const TripRepository = {
                 'profile_pic_url', d.profile_pic_url,
                 'rating', d.rating,
                 'current_lat', d.current_lat,
-                'current_lng', d.current_lng
+                'current_lng', d.current_lng,
+                'total_trips', d.total_trips
                -- 'vehicle_number', d.vehicle_number,
                -- 'vehicle_model', d.vehicle_model,
                -- 'vehicle_type', d.vehicle_type
@@ -328,7 +333,7 @@ export const TripRepository = {
       }
       return result.rows[0];
     } catch (error) {
-      console.error("Database Error in acceptTrip:", error);
+      logger.error(`Database Error in acceptTrip: ${error}`);
       throw new Error("Failed to update trip acceptance in database");
     }
   },
@@ -347,19 +352,42 @@ export const TripRepository = {
     const sql = `
       SELECT 
         t.*, 
-        u.full_name       AS user_name, 
-        u.phone_number    AS user_phone,
-        d.full_name       AS driver_name,
-        d.phone_number    AS driver_phone,
+        t.trip_id AS trip_code,
+        t.distance_km AS "Estimate_km",
+        u.full_name AS user_name, 
+        u.phone_number AS user_phone,
+        d.full_name AS driver_name,
+        d.phone_number AS driver_phone,
+        v.vehicle_number AS car_number,
+        COALESCE(v.model, t.vehicle_model) AS car_type,
+        COALESCE(t.base_fare, 0) AS base_fare,
+        COALESCE(t.waiting_charges, 0) AS waiting_charges,
+        COALESCE(t.driver_allowance, 0) AS driver_allowance,
+        COALESCE(t.platform_fee, 0) AS platform_fee,
+        COALESCE(t.total_fare, 0) AS total_fare,
+        0 AS distance_fare_per_km,
+        0 AS distance_fare,
+        0 AS time_fare_per_minute,
+        0 AS time_fare,
+        0 AS return_compensation,
+        1 AS surge_multiplier,
+        0 AS surge_pricing,
+        0 AS tip,
+        0 AS toll_charges,
+        0 AS night_charges,
+        0 AS discount,
+        5 AS gst_percentage,
+        0 AS gst_amount,
+        (COALESCE(t.total_fare, 0) - COALESCE(t.platform_fee, 0)) AS subtotal,
         COALESCE(
           json_agg(
             json_build_object(
-              'id',                    tt.id,
-              'trip_id',               tt.trip_id,
-              'sequence_no',           tt.sequence_no,
-              'event_type',            tt.event_type,
-              'status',                tt.status,
-              'actor_type',            tt.actor_type,
+              'id', tt.id,
+              'trip_id', tt.trip_id,
+              'sequence_no', tt.sequence_no,
+              'event_type', tt.event_type,
+              'status', tt.status,
+              'actor_type', tt.actor_type,
               'actor_id',              tt.actor_id,
               'actor_name',            tt.actor_name,
               'changed_fields',        tt.changed_fields,
@@ -369,14 +397,15 @@ export const TripRepository = {
               'metadata',              tt.metadata,
               'event_at',              tt.event_at
             ) ORDER BY tt.sequence_no ASC
-          ) FILTER (WHERE tt.id IS NOT NULL AND tt.actor_type = 'user'),
+          ) FILTER (WHERE tt.id IS NOT NULL),
           '[]'
         ) AS trip_transactions
       FROM trips t
-      LEFT JOIN users             u  ON t.user_id  = u.id
-      LEFT JOIN drivers           d  ON t.driver_id = d.id
-      LEFT JOIN trip_transactions tt ON t.trip_id  = tt.trip_id
-      GROUP BY t.trip_id, u.full_name, u.phone_number, d.full_name, d.phone_number
+      LEFT JOIN users u ON t.user_id = u.id
+      LEFT JOIN drivers d ON t.driver_id = d.id
+      LEFT JOIN vehicles v ON t.vehicle_id = v.id
+      LEFT JOIN trip_transactions tt ON t.trip_id = tt.trip_id
+      GROUP BY t.trip_id, u.full_name, u.phone_number, d.full_name, d.phone_number, v.vehicle_number, v.model
       ORDER BY t.created_at DESC;
     `;
     const result = await query(sql);
@@ -441,7 +470,7 @@ export const TripRepository = {
       }
       return result.rows[0];
     } catch (error) {
-      console.error("Database Error in updateTripStatus:", error);
+      logger.error(`Database Error in updateTripStatus: ${error}`);
       throw new Error("Failed to update trip Status in database");
     }
   },
@@ -498,7 +527,7 @@ export const TripRepository = {
       }
       return result.rows[0];
     } catch (error) {
-      console.error("Database Error in cancelTrip:", error);
+      logger.error(`Database Error in cancelTrip: ${error}`);
       throw new Error("Failed to cancel trip in database");
     }
   },

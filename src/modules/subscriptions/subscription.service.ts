@@ -7,6 +7,7 @@ import { CreateOrderRequest, VerifyPaymentRequest } from './subscription.model';
 import { query, getClient } from '../../shared/database';
 import axios from 'axios';
 import config from '../../config';
+import { logger } from '../../shared/logger';
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID as string,
@@ -118,7 +119,7 @@ export const SubscriptionService = {
         .digest('hex');
 
       if (expectedSignature !== razorpay_signature) {
-        console.error(`Invalid signature for order ${razorpay_order_id} and driver ${driverId}`);
+        logger.error(`Invalid signature for order ${razorpay_order_id} and driver ${driverId}`);
         throw new Error('Invalid payment signature');
       }
     }
@@ -207,14 +208,14 @@ export const SubscriptionService = {
           data: { driverId, planId: payment.plan_id, driverName, planName, isRenewal }
         }, {
           headers: { 'x-api-key': config.internalServiceApiKey }
-        }).catch(err => console.error(`Webhook trigger failed: ${err.message}`));
+        }).catch(err => logger.error(`Webhook trigger failed: ${err.message}`));
       } catch (e) {
         // Ignore 
       }
 
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Transaction failed, rolled back:', error);
+      logger.error(`Transaction failed, rolled back: ${error}`);
       throw error;
     } finally {
       client.release();

@@ -60,14 +60,26 @@ export const initSocket = (server: HttpServer) => {
         const { DriverRepository } = require('../modules/drivers/driver.repository');
         const { TripService } = require('../modules/trip/trip.service');
         const { LocationHistoryRepository } = require('../modules/drivers/locationHistory.repository');
+        const { getRedisClient } = require('./redis');
 
         const { driverId, lat, lng, address } = data;
         if (!driverId || lat === undefined || lng === undefined) {
           return;
         }
 
-        // Update driver's current location
-        await DriverRepository.updateLocation(driverId, lat, lng, address || '');
+        // 1. ⚡ Update Redis GEO Index immediately (High performance)
+        try {
+          const redis = getRedisClient();
+          // Add to 'driver_locations' geo index (longitude first, then latitude in Redis!)
+          await redis.geoadd('driver_locations', lng, lat, driverId);
+          // Store last updated timestamp
+          await redis.hset(`driver_info:${driverId}`, 'last_updated', Date.now());
+          if (address) {
+            await redis.hset(`driver_info:${driverId}`, 'address', address);
+          }
+        } catch (redisErr) {
+          logger.error(`Redis geoadd failed for driver ${driverId}:`, redisErr);
+        }
 
         // Check if driver has an active trip
         const activeTrip = await TripService.getActiveTrip(driverId);

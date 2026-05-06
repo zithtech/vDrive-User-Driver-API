@@ -10,6 +10,8 @@ import { DriverDocumentsRepository } from './driver-documents.repository';
 import { DriverReferralRepository } from '../driver-referrals/driver-referral.repository';
 import axios from 'axios';
 import config from '../../config';
+import { notificationService } from '../../services/notificationService';
+import { DriverOnboardingStatus } from '../../enums/user.enums';
 
 export const DriverService = {
   async createDriver(driverData: CreateDriverInput): Promise<Driver> {
@@ -48,7 +50,7 @@ export const DriverService = {
     let nextStatus: any = driverData.onboarding_status || currentStatus;
 
     // 1. Profile Completion: PHONE_VERIFIED -> PROFILE_COMPLETED
-    if (currentStatus === 'PHONE_VERIFIED' || !currentStatus) {
+    if (currentStatus === DriverOnboardingStatus.PHONE_VERIFIED || !currentStatus) {
       const isProfileUpdate = driverData.first_name || driverData.last_name || driverData.email;
       if (isProfileUpdate) {
         const fName = driverData.first_name || currentDriver.first_name;
@@ -59,7 +61,7 @@ export const DriverService = {
         }
 
         if (fName && lName) {
-          nextStatus = 'PROFILE_COMPLETED';
+          nextStatus = DriverOnboardingStatus.PROFILE_COMPLETED;
         }
       }
     }
@@ -69,8 +71,8 @@ export const DriverService = {
     // or if the payload explicitly requests it.
     if (driverData.address) {
       // Only move forward to ADDRESS_COMPLETED if currently lower
-      if (nextStatus === 'PHONE_VERIFIED' || nextStatus === 'PROFILE_COMPLETED' || !nextStatus) {
-        nextStatus = 'ADDRESS_COMPLETED';
+      if (nextStatus === DriverOnboardingStatus.PHONE_VERIFIED || nextStatus === DriverOnboardingStatus.PROFILE_COMPLETED || !nextStatus) {
+        nextStatus = DriverOnboardingStatus.ADDRESS_COMPLETED;
         
         // Trigger webhook for Admin App real-time notifications
         try {
@@ -92,9 +94,16 @@ export const DriverService = {
     // Ensure we don't downgrade if payload explicitly had a higher status
     if (driverData.onboarding_status) {
       // Hierarchy check (very basic)
-      const order = ['PHONE_VERIFIED', 'PROFILE_COMPLETED', 'ADDRESS_COMPLETED', 'DOCS_UPLOADING', 'DOCS_SUBMITTED', 'DOCUMENTS_APPROVED', 'ACTIVE'];
+      const order = [
+        DriverOnboardingStatus.PHONE_VERIFIED,
+        DriverOnboardingStatus.PROFILE_COMPLETED,
+        DriverOnboardingStatus.ADDRESS_COMPLETED,
+        DriverOnboardingStatus.DOCS_SUBMITTED,
+        DriverOnboardingStatus.DOCUMENTS_APPROVED,
+        DriverOnboardingStatus.ACTIVE
+      ];
       const currentIdx = order.indexOf(nextStatus);
-      const requestedIdx = order.indexOf(driverData.onboarding_status as string);
+      const requestedIdx = order.indexOf(driverData.onboarding_status as DriverOnboardingStatus);
       if (requestedIdx > currentIdx) {
         nextStatus = driverData.onboarding_status;
       }
@@ -138,6 +147,38 @@ export const DriverService = {
     if (!driver) {
       throw { statusCode: 404, message: 'Driver not found' };
     }
+
+    // Send push notification for status changes (e.g., blocked or rejected)
+    if (driverData.status && driverData.status !== currentStatus) {
+      if (driver.fcm_token) {
+        let title = '';
+        let body = '';
+        let type = '';
+
+        if (driverData.status === 'blocked') {
+          title = 'Account Restricted';
+          body = `Your account has been restricted. Reason: ${driverData.status_reason || 'Administrative reasons'}`;
+          type = 'ACCOUNT_BLOCKED';
+        } else if (driverData.status === 'rejected') {
+          title = 'Application Rejected';
+          body = `Your application was not approved. Reason: ${driverData.status_reason || 'Incomplete details'}`;
+          type = 'ACCOUNT_REJECTED';
+        }
+
+        if (title && body) {
+          notificationService.sendPushNotification(driver.fcm_token, {
+            title,
+            body,
+            data: {
+              type,
+              status: driverData.status,
+              status_reason: driverData.status_reason || ''
+            }
+          }).catch(err => logger.error(`Failed to send status update notification: ${err.message}`));
+        }
+      }
+    }
+
     return driver;
   },
 
@@ -149,8 +190,8 @@ export const DriverService = {
     return driver;
   },
 
-  async getAllDrivers(limit: number = 50, offset: number = 0): Promise<Driver[]> {
-    return await DriverRepository.findAll(limit, offset);
+  async getAllDrivers(limit: number = 50, offset: number = 0, status?: string, onboardingStatus?: string): Promise<Driver[]> {
+    return await DriverRepository.findAll(limit, offset, status, onboardingStatus);
   },
 
   async resetDriverProfile(driverId: string): Promise<boolean> {
@@ -166,12 +207,12 @@ export const DriverService = {
         `UPDATE drivers 
          SET status = $1, 
              kyc = $2, 
-             onboarding_status = 'PHONE_VERIFIED', 
+             onboarding_status = $4, 
              documents_submitted = false,
              profile_pic_url = NULL,
              updated_at = NOW() 
          WHERE id = $3`,
-        ['pending_verification', defaultKyc, driverId]
+        ['pending_verification', defaultKyc, driverId, DriverOnboardingStatus.PHONE_VERIFIED]
       );
       logger.info(`Drivers table updated for driver: ${driverId}`);
 
@@ -185,6 +226,11 @@ export const DriverService = {
   async verifyDriverDocuments(driverId: string): Promise<boolean> {
     try {
       logger.info(`Manual verification started for driver: ${driverId}`);
+
+      const driver = await DriverRepository.findById(driverId);
+      if (!driver) {
+        throw { statusCode: 404, message: 'Driver not found' };
+      }
 
       // 1. Update all documents to verified
       await query(
@@ -204,14 +250,27 @@ export const DriverService = {
       await query(
         `UPDATE drivers 
          SET status = 'active', 
-             onboarding_status = 'DOCUMENTS_APPROVED', 
+             onboarding_status = $3, 
              kyc = $1,
              updated_at = NOW() 
          WHERE id = $2`,
-        [kycData, driverId]
+        [kycData, driverId, DriverOnboardingStatus.DOCUMENTS_APPROVED]
       );
 
       logger.info(`Driver ${driverId} manually verified and activated`);
+
+      // 3. Send Push Notification
+      if (driver.fcm_token) {
+        notificationService.sendPushNotification(driver.fcm_token, {
+          title: 'Account Approved!',
+          body: 'Your documents have been verified. You can now go online and start earning.',
+          data: {
+            type: 'ACCOUNT_APPROVED',
+            onboarding_status: DriverOnboardingStatus.DOCUMENTS_APPROVED
+          }
+        }).catch(err => logger.error(`Failed to send approval notification: ${err.message}`));
+      }
+
       return true;
     } catch (error: any) {
       logger.error(`Error in verifyDriverDocuments: ${error.message}`);
@@ -321,7 +380,13 @@ export const DriverService = {
     }
 
     if (drivers && drivers.length > 0) {
-      await TripService.requestRideToMultipleDrivers(io, newTrip, drivers);
+      // Average speed 30km/h => 500 meters/min
+      const driversWithEta = drivers.map(d => ({
+        ...d,
+        eta: Math.ceil(parseInt(d.distance_meters) / config.avgSpeedMetersPerMin) || 1
+      }));
+
+      await TripService.requestRideToMultipleDrivers(io, [newTrip], driversWithEta);
     }
 
     return { drivers, searchedRadius };
@@ -332,7 +397,6 @@ export const DriverService = {
     
     // Process distance and ETA
     // Average speed 30km/h => 0.5 km/min => 500 meters/min
-    const AVG_SPEED_METERS_PER_MIN = 500; 
 
     return driversData.map(d => ({
       id: d.id,
@@ -343,7 +407,7 @@ export const DriverService = {
       current_lng: d.current_lng,
       distance_meters: parseInt(d.distance_meters),
       distance_km: parseFloat((parseInt(d.distance_meters) / 1000).toFixed(2)),
-      eta_minutes: Math.ceil(parseInt(d.distance_meters) / AVG_SPEED_METERS_PER_MIN) || 1, // at least 1 min
+      eta_minutes: Math.ceil(parseInt(d.distance_meters) / config.avgSpeedMetersPerMin) || 1, // at least 1 min
     }));
   },
 

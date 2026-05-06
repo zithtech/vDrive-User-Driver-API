@@ -1,5 +1,6 @@
 import { Server, Socket } from "socket.io";
 import { query } from "../shared/database";
+import { logger } from "../shared/logger";
 
 interface ChatMessage {
     messageId: string;
@@ -19,7 +20,7 @@ export default function registerChatSocket(io: Server, socket: Socket) {
     socket.on("joinChat", async ({ rideId, userId }) => {
         const room = `chat_${rideId}`;
         socket.join(room);
-        console.log(`💬 ${userId} joined chat ${room}`);
+        logger.info(`💬 ${userId} joined chat ${room}`);
         try {
             const { rows } = await query(
                 `SELECT * FROM chat_messages
@@ -45,7 +46,7 @@ export default function registerChatSocket(io: Server, socket: Socket) {
             // Emit only to this socket (not the whole room)
             socket.emit("chatHistory", history);
         } catch (err) {
-            console.error("Failed to load chat history:", err);
+            logger.error(`Failed to load chat history: ${err}`);
             socket.emit("chatHistory", []); // send empty so client doesn't hang
         }
     });
@@ -72,7 +73,7 @@ export default function registerChatSocket(io: Server, socket: Socket) {
                 ]
             );
         } catch (err) {
-            console.error("Failed to save chat message:", err);
+            logger.error(`Failed to save chat message: ${err}`);
         }
 
         // Emit message to all except sender first
@@ -99,7 +100,7 @@ export default function registerChatSocket(io: Server, socket: Socket) {
                 [messageId]
             );
         } catch (err) {
-            console.error("Failed to update seen status:", err);
+            logger.error(`Failed to update seen status: ${err}`);
         }
         io.to(`chat_${rideId}`).emit("messageSeenUpdate", {
             messageId,

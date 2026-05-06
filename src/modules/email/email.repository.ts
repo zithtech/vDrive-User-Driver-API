@@ -1,8 +1,9 @@
 import nodemailer, { Transporter, SendMailOptions } from 'nodemailer';
 import config from '../../config';
+import { logger } from '../../shared/logger';
 
-console.log('User used for Auth:', config.email.user);
-console.log('Pass loaded for Auth:', config.email.pass ? 'LOADED' : 'MISSING');
+logger.info(`User used for Auth: ${config.email.user}`);
+logger.info(`Pass loaded for Auth: ${config.email.pass ? 'LOADED' : 'MISSING'}`);
 // Initialize the Nodemailer Transporter
 const transporter: Transporter = nodemailer.createTransport({
     service: config.email.service,
@@ -20,9 +21,9 @@ export const EmailRepository = {
     async sendMail(mailOptions: SendMailOptions): Promise<void> {
         try {
             const info = await transporter.sendMail(mailOptions);
-            console.log('Email sent successfully:', info.response);
+            logger.info(`Email sent successfully: ${info.response}`);
         } catch (error) {
-            console.error('Email sending failed:', error);
+            logger.error('Email sending failed:', error);
             // Throw a custom error to be handled by the Service layer
             throw new Error("Failed to connect to email service or send mail.");
         }

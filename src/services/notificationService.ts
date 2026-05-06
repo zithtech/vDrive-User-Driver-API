@@ -1,4 +1,5 @@
 import admin from "../config/firebase";
+import { logger } from "../shared/logger";
 
 export interface PushPayload {
     title: string;
@@ -12,7 +13,7 @@ export const notificationService = {
      */
     async sendPushNotification(token: string, payload: PushPayload) {
         if (!token) {
-            console.error("Cannot send notification: No token provided.");
+            logger.error("Cannot send notification: No token provided.");
             return;
         }
 
@@ -35,10 +36,10 @@ export const notificationService = {
 
         try {
             const response = await admin.messaging().send(message);
-            console.log('✅ Push notification delivered:', response);
+            logger.info(`✅ Push notification delivered: ${response}`);
             return response;
         } catch (error) {
-            console.error('❌ Firebase delivery failed:', error);
+            logger.error('❌ Firebase delivery failed:', error);
             throw error;
         }
     }

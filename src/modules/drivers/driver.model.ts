@@ -1,4 +1,5 @@
 // src/modules/drivers/driver.model.ts
+import { DriverOnboardingStatus } from '../../enums/user.enums';
 
 export type DriverRole = string;
 export type DriverStatus = string;
@@ -102,11 +103,14 @@ export interface Driver {
   alternate_contact?: string;
   email: string;
   profilePicUrl?: string;
+  profile_picture?: string;
+  profile_pic_url?: string;
   date_of_birth: string;
   gender: 'male' | 'female' | 'other';
   address?: Address;
   role: DriverRole;
   status: DriverStatus;
+  status_reason?: string;
   rating?: number;
   total_trips?: number;
   total_earnings?: number;
@@ -118,15 +122,7 @@ export interface Driver {
   created_at?: string;
   updated_at?: string;
   documents?: Document[];
-  onboarding_status?:
-  | 'PHONE_VERIFIED'
-  | 'PROFILE_COMPLETED'
-  | 'ADDRESS_COMPLETED'
-  | 'DOCS_SUBMITTED'
-  | 'DOCUMENTS_APPROVED'
-  | 'SUBSCRIPTION_ACTIVE'
-  | 'DOCS_REJECTED' // Keep for backward compatibility or rejection flow
-  | 'ACTIVE'; // Legacy?
+  onboarding_status?: DriverOnboardingStatus;
   documents_submitted?: boolean;
   performance?: Performance;
   payments?: Payments;
@@ -223,6 +219,7 @@ export interface UpdateDriverInput extends Partial<
   is_vibration_enabled?: boolean;
   fcm_token?: string;
   rating?: number;
+  status_reason?: string;
   total_earnings?: number;
   total_trips?: number;
   referral_code?: string;

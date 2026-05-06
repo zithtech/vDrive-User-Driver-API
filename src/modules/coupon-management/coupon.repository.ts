@@ -1,4 +1,5 @@
 import { query } from '../../shared/database';
+import { logger } from '../../shared/logger';
 
 export const CouponRepository = {
   // async findByCode(code: string) {
@@ -16,7 +17,7 @@ export const CouponRepository = {
       CURRENT_TIMESTAMP as server_time 
     FROM coupons WHERE code = $1`, [code]);
 
-  console.log("Coupon lookup:", result.rows);
+  logger.info(`Coupon lookup: ${JSON.stringify(result.rows)}`);
 
   return result.rows[0] || null;
 },

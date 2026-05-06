@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { EmailService } from './email.service';
+import { logger } from '../../shared/logger';
 
 export const InvoiceController = {
     async sendInvoice(req: Request, res: Response): Promise<Response> {
@@ -27,7 +28,7 @@ export const InvoiceController = {
             });
 
         } catch (error) {
-            console.error('Error in InvoiceController:', error);
+            logger.error(`Error in InvoiceController: ${error}`);
             // 4. Send error response
             return res.status(500).json({ 
                 message: 'Failed to process request due to a server error.' 

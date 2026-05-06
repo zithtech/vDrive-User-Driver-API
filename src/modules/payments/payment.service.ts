@@ -2,6 +2,7 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { PaymentRepository } from '../payments/payment.repository';
 import { IRazorpayOrderResponse, IVerifyPaymentRequest } from '../payments/payment.model';
+import { logger } from '../../shared/logger';
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID as string,
@@ -24,7 +25,7 @@ export const PaymentService = {
       
       return order as IRazorpayOrderResponse;
     } catch (error) {
-      console.error('Service Error (createOrder):', error);
+      logger.error(`Service Error (createOrder): ${error}`);
       throw error;
     }
   },
@@ -47,7 +48,7 @@ export const PaymentService = {
       await PaymentRepository.updateRideStatus(razorpay_order_id, 'FAILED');
       return false;
     } catch (error) {
-      console.error('Service Error (verifySignature):', error);
+      logger.error(`Service Error (verifySignature): ${error}`);
       throw error;
     }
   },
@@ -74,7 +75,7 @@ export const PaymentService = {
   
       return order as IRazorpayOrderResponse;
     } catch (error) {
-      console.error('Service Error (createOrder):', error);
+      logger.error(`Service Error (createOrder): ${error}`);
       throw error;
     }
   },
@@ -115,7 +116,7 @@ export const PaymentService = {
       await PaymentRepository.updateStatus(razorpay_order_id, 'failed', razorpay_payment_id, razorpay_signature);
       return false;
     } catch (error) {
-      console.error('Service Error (verifySignature):', error);
+      logger.error(`Service Error (verifySignature): ${error}`);
       throw error;
     }
   }

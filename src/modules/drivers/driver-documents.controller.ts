@@ -64,8 +64,8 @@ export class DriverDocumentsController {
   static async verifyDocument(req: Request, res: Response, next: NextFunction) {
     try {
         const { id } = req.params; // Document ID
-        const { status, remarks } = req.body;
-        const document = await DriverDocumentsService.verifyDocument(id as string, status, remarks);
+        const { status, remarks, reason } = req.body;
+        const document = await DriverDocumentsService.verifyDocument(id as string, status, remarks || reason, reason || remarks);
         return successResponse(res, 200, 'Document verified successfully', document);
     } catch (error) {
         next(error);

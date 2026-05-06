@@ -42,6 +42,10 @@ interface Config {
   };
   internalServiceApiKey: string;
   adminBackendUrl: string;
+  adminInternalSocketUrl: string;
+  referralDownloadUrl: string;
+  defaultSearchRadius: number;
+  avgSpeedMetersPerMin: number;
 }
 
 const config: Config = {
@@ -83,6 +87,10 @@ const config: Config = {
   },
   internalServiceApiKey: process.env.INTERNAL_SERVICE_API_KEY || '',
   adminBackendUrl: process.env.ADMIN_BACKEND_URL || 'http://localhost:3000',
+  adminInternalSocketUrl: process.env.ADMIN_INTERNAL_SOCKET_URL || 'http://localhost:3000/internal',
+  referralDownloadUrl: process.env.REFERRAL_DOWNLOAD_URL || 'https://vdrive.app/download',
+  defaultSearchRadius: Number(process.env.DEFAULT_SEARCH_RADIUS) || 500,
+  avgSpeedMetersPerMin: Number(process.env.AVG_SPEED_METERS_PER_MIN) || 500,
 };
 
 export default config;

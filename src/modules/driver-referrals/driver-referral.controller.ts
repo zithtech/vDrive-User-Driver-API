@@ -7,6 +7,7 @@ import { DriverRepository } from '../drivers/driver.repository';
 import { successResponse } from '../../shared/errorHandler';
 import { logger } from '../../shared/logger';
 import { PromoService } from '../promos/promo.service';
+import config from '../../config';
 
 export const DriverReferralController = {
   /**
@@ -34,7 +35,7 @@ export const DriverReferralController = {
 
       return successResponse(res, 200, 'Referral code fetched successfully', {
         referral_code: referralCode,
-        share_message: `Hey! Join V-Drive using my code ${referralCode} and get ₹${refereeReward} subscription discount after your first ride! Download now: https://vdrive.app/download`,
+        share_message: `Hey! Join V-Drive using my code ${referralCode} and get ₹${refereeReward} subscription discount after your first ride! Download now: ${config.referralDownloadUrl}`,
       });
     } catch (err: any) {
       logger.error(`Error fetching referral code: ${err.message}`);

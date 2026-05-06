@@ -79,10 +79,10 @@ const handleRoomJoins = (socket: Socket): void => {
 
         // Also join personal room for direct messages
         if (role === 'USER') {
-            socket.join(`user_${actorId}`);
+            socket.join(`user_${String(actorId)}`);
             logger.info(`User ${actorId} joined trip room: ${tripRoom}`);
         } else if (role === 'DRIVER') {
-            socket.join(`driver_${actorId}`);
+            socket.join(`driver_${String(actorId)}`);
             logger.info(`Driver ${actorId} joined trip room: ${tripRoom}`);
         }
     });
@@ -95,19 +95,18 @@ const handleRoomJoins = (socket: Socket): void => {
         socket.leave(tripRoom);
 
         if (role === 'USER') {
-            socket.leave(`user_${actorId}`);
             logger.info(`User ${actorId} left trip room: ${tripRoom}`);
         } else if (role === 'DRIVER') {
-            socket.leave(`driver_${actorId}`);
             logger.info(`Driver ${actorId} left trip room: ${tripRoom}`);
         }
     });
 
     // Driver listening for incoming trip requests
-    socket.on('JOIN_DRIVER_ROOM', (driverId: string) => {
+    socket.on('JOIN_DRIVER_ROOM', (driverId: any) => {
         if (!driverId) return;
-        socket.join(`driver_${driverId}`);
-        logger.info(`Driver ${driverId} listening in room: driver_${driverId}`);
+        const roomName = `driver_${String(driverId)}`;
+        socket.join(roomName);
+        logger.info(`Driver ${driverId} listening in room: ${roomName}`);
     });
 
     // User personal room (for direct notifications)
@@ -119,6 +118,29 @@ const handleRoomJoins = (socket: Socket): void => {
 };
 
 const handleDriverLocation = (socket: Socket): void => {
+    // 1. Generic driver location update (for online tracking)
+    socket.on('driver_location_update', async (data: { driverId: string; lat: number; lng: number; address?: string }) => {
+        try {
+            const { getRedisClient } = require('../shared/redis');
+            const redis = getRedisClient();
+            const { driverId, lat, lng, address } = data;
+
+            if (!driverId || lat === undefined || lng === undefined) return;
+
+            // ⚡ Update Redis GEO Index immediately (High performance)
+            // Note: Redis GEOADD expects (longitude, latitude)
+            await redis.geoadd('driver_locations', lng, lat, driverId);
+            
+            // Store last updated timestamp and optional address
+            await redis.hset(`driver_info:${driverId}`, 'last_updated', Date.now());
+            if (address) {
+                await redis.hset(`driver_info:${driverId}`, 'address', address);
+            }
+        } catch (error) {
+            logger.error('Error handling driver_location_update socket event:', error);
+        }
+    });
+
     socket.on(
         'updateDriverLocation',
         (data: {

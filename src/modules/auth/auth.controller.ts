@@ -10,6 +10,7 @@ import { UserService } from '../users/user.service';
 import { formFullName, generateOTP } from '../../utilities/helper';
 import { notifyAdmin } from '../../sockets/admin-socket.service';
 import { AuthRepository } from './auth.repository';
+import { DriverRepository } from '../drivers/driver.repository';
 import { query } from '../../shared/database';
 
 
@@ -121,7 +122,7 @@ export const AuthController = {
 
       logger.info(`Fetching profile for user ID: ${userId}`);
       const userProfile = await AuthService.getMe(userId);
-      console.log(`User fetched successfully,`, userProfile);
+      logger.info(`User fetched successfully: ${JSON.stringify(userProfile)}`);
 
       if (!userProfile) {
         logger.warn(`User not found for ID: ${userId}`);
@@ -353,12 +354,16 @@ export const AuthController = {
       }
 
       // ✅ 3. Get user data
-      const table = role === 'driver' ? 'drivers' : 'users';
-      const result = await query(
-        `SELECT * FROM ${table} WHERE id = $1 LIMIT 1`,
-        [userId]
-      );
-      const userData = result.rows[0];
+      let userData;
+      if (role === 'driver') {
+        userData = await DriverRepository.findById(userId);
+      } else {
+        const result = await query(
+          `SELECT * FROM users WHERE id = $1 LIMIT 1`,
+          [userId]
+        );
+        userData = result.rows[0];
+      }
 
       if (!userData) {
         return res.status(404).json({
@@ -369,7 +374,8 @@ export const AuthController = {
       }
 
       // ✅ 4. Check user status
-      if (userData.status === 'banned' || userData.status === 'deleted') {
+      const userStatus = role === 'driver' ? userData.status : userData.status; // Both use .status
+      if (userStatus === 'banned' || userStatus === 'deleted') {
         return res.status(403).json({
           success: false,
           code: 'ACCOUNT_DISABLED',

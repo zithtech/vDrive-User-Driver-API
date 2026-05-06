@@ -52,6 +52,8 @@ export enum DriverNotificationType {
     RIDE_STARTED = 'RIDE_STARTED',
     RIDE_COMPLETED = 'RIDE_COMPLETED',
     SOS_RESOLVED = 'SOS_RESOLVED',
+    TRIP_VERIFICATION_APPROVED = 'TRIP_VERIFICATION_APPROVED',
+    TRIP_VERIFICATION_REJECTED = 'TRIP_VERIFICATION_REJECTED',
 }
 
 // ─── Admin Notification Types ─────────────────────────────────────────────────

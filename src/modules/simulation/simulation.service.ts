@@ -1,6 +1,7 @@
 // src/services/simulationService.js
 import { Server } from 'socket.io';
 import { simulationRepository } from './simulation.repository';
+import { logger } from '../../shared/logger';
 
 
 interface TripUpdateResponse {
@@ -75,7 +76,7 @@ export const simulationService = {
             );
 
             if (!updatedTrip) {
-                console.error(`Trip ${tripId} not found during location update.`);
+                logger.error(`Trip ${tripId} not found during location update.`);
                 return null;
             }
 
@@ -91,7 +92,7 @@ export const simulationService = {
 
             return updatedTrip;
         } catch (error) {
-            console.error("Error in simulationService:", error);
+            logger.error(`Error in simulationService: ${error}`);
             throw error;
         }
     }

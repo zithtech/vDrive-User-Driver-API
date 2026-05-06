@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { SubscriptionService } from './subscription.service';
 import { SubscriptionRepository } from './subscription.repository';
 import { successResponse } from '../../shared/errorHandler';
+import { logger } from '../../shared/logger';
 
 export const SubscriptionController = {
   async createOrder(req: any, res: Response, next: NextFunction) {
@@ -10,7 +11,7 @@ export const SubscriptionController = {
       const order = await SubscriptionService.createOrder(driverId, req.body);
       return successResponse(res, 201, 'Order created successfully', order);
     } catch (error: any) {
-      console.error('Error in createOrder:', error.message);
+      logger.error(`Error in createOrder: ${error.message}`);
       next(error);
     }
   },

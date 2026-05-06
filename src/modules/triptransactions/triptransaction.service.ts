@@ -4,6 +4,7 @@ import { TripRepository } from "../trip/trip.repository";
 import { UserRepository } from "../users/user.repository";
 import { EventMetadata, LogEventParams, Pagination, TripHistoryResult, TripSnapshot, TripTransaction } from "./triptransaction.model";
 import { TripTransactionRepository } from "./triptransaction.repository";
+import { logger } from "../../shared/logger";
 
 interface DiffResult<T extends object> {
     changedFields: (keyof T)[];
@@ -117,8 +118,8 @@ export const TripTransactionService = {
             trip?.user_id ? UserRepository.findById(trip.user_id, 'active') : null,
             trip?.driver_id ? DriverRepository.findDriverById(trip.driver_id) : null,
         ]);
-        console.log("userDetails", userDetails);
-        console.log("driverDetails", driverDetails);
+        logger.info(`userDetails: ${JSON.stringify(userDetails)}`);
+        logger.info(`driverDetails: ${JSON.stringify(driverDetails)}`);
         return {
             total,
             transactions: rows,
