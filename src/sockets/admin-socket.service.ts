@@ -2,7 +2,6 @@ import { logger } from "../shared/logger";
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import { Server } from 'socket.io';
 import config from '../config';
-import config from "../config";
 
 let adminSocket: ClientSocket;
 
@@ -13,7 +12,6 @@ export function connectToAdminBackend(userIo: Server) {
 
     // socket.io-client handles http:// → ws:// upgrade automatically.
     // The /internal segment is the Socket.IO namespace, not an HTTP path.
-    adminSocket = ioClient(`${adminUrl}/internal`, {
     adminSocket = ioClient(config.adminInternalSocketUrl, { // ✅ Admin backend should be on a DIFFERENT port
         transports: ['websocket'],
         auth: { token: process.env.INTERNAL_SERVICE_SECRET },

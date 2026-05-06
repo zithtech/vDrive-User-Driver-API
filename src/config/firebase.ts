@@ -1,4 +1,6 @@
 import * as admin from 'firebase-admin';
+import * as fs from 'fs';
+import * as path from 'path';
 import { logger } from '../shared/logger';
 import { NotificationPayload, NotificationResult } from '../modules/notifications/notification.types';
 
@@ -23,12 +25,26 @@ const initializeFirebase = (): void => {
     if (admin.apps.length > 0) return;
 
     try {
-        if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-            throw new Error('FIREBASE_SERVICE_ACCOUNT environment variable is not set');
-        }
+        let serviceAccount: any;
 
-        // Parse the service account JSON from the environment variable
-        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+            // Case 1: Service account JSON is provided directly in the environment variable
+            serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        } else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
+            // Case 2: Path to service account JSON file is provided
+            const absolutePath = path.isAbsolute(process.env.FIREBASE_SERVICE_ACCOUNT_PATH)
+                ? process.env.FIREBASE_SERVICE_ACCOUNT_PATH
+                : path.join(process.cwd(), process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+
+            if (fs.existsSync(absolutePath)) {
+                const fileContent = fs.readFileSync(absolutePath, 'utf8');
+                serviceAccount = JSON.parse(fileContent);
+            } else {
+                throw new Error(`FIREBASE_SERVICE_ACCOUNT_PATH is set but file not found: ${absolutePath}`);
+            }
+        } else {
+            throw new Error('Neither FIREBASE_SERVICE_ACCOUNT nor FIREBASE_SERVICE_ACCOUNT_PATH environment variable is set');
+        }
 
         admin.initializeApp({
             credential: admin.credential.cert(serviceAccount),
