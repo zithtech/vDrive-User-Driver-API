@@ -150,18 +150,6 @@ export interface TripDetailsType {
   started_at: string | null;
   ended_at: string | null;
 
-  trip_changes?: {
-    id: string;
-    trip_id: string;
-
-    change_type: "SCHEDULE_TIME" | "FARE" | "DRIVER" | "STATUS";
-
-    old_value: Record<string, any>;
-    new_value: Record<string, any>;
-
-    changed_by: "USER" | "ADMIN" | "SYSTEM";
-    changed_at: string;
-
-    notes: string | null;
-  }[];
+  trip_code: string;
+  trip_transactions: any[];
 }

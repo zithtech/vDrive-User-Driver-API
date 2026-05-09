@@ -6,7 +6,7 @@ import * as bcrypt from 'bcrypt';
 import jwt, { JwtPayload, SignOptions } from 'jsonwebtoken';
 import config from '../../config';
 import { UserRepository } from '../users/user.repository';
-import { OnboardingStatus, UserRole, UserStatus } from '../../enums/user.enums';
+import { OnboardingStatus, DriverOnboardingStatus, UserRole, UserStatus } from '../../enums/user.enums';
 import { isInvalidUser, generateOTP } from '../../utilities/helper';
 import { User } from '../users/user.model';
 import { logger } from '../../shared/logger';
@@ -32,7 +32,7 @@ async function createNewUser(role: string, phone_number: string, device_id: stri
     role,
     status: UserStatus.ACTIVE,
     device_id,
-    onboarding_status: OnboardingStatus.PHONE_VERIFIED,
+    onboarding_status: role === 'driver' ? DriverOnboardingStatus.PHONE_VERIFIED : OnboardingStatus.PHONE_VERIFIED,
     date_of_birth: null,
     gender: null,
     referred_by: referred_by || null,
@@ -45,6 +45,7 @@ async function createNewUser(role: string, phone_number: string, device_id: stri
     const driverInput = {
       ...baseInput,
       address: '',
+      status: UserStatus.PENDING_VERIFICATION, // Initialize as pending
       documents_submitted: false,
     };
     const newDriver = await DriverRepository.create(driverInput);
@@ -52,7 +53,7 @@ async function createNewUser(role: string, phone_number: string, device_id: stri
       id: newDriver.driverId,
       ...newDriver,
       role: UserRole.DRIVER,
-      status: UserStatus.ACTIVE,
+      status: UserStatus.PENDING_VERIFICATION,
     };
   }
 
@@ -367,9 +368,11 @@ export const AuthService = {
       } else if (userData) {
         // Handle transitions for existing users
         let updatedStatus: OnboardingStatus | undefined;
-        if (userData.onboarding_status === OnboardingStatus.PENDING) {
-          updatedStatus = OnboardingStatus.PHONE_VERIFIED;
-        } else if (userData.onboarding_status === OnboardingStatus.PROFILE_COMPLETED) {
+        const currentStatus = userData.onboarding_status;
+        
+        if ((currentStatus as any) === OnboardingStatus.PENDING || (currentStatus as any) === 'pending' || (currentStatus as any) === 'PENDING') {
+          updatedStatus = role === 'driver' ? DriverOnboardingStatus.PHONE_VERIFIED : OnboardingStatus.PHONE_VERIFIED as any;
+        } else if (role === 'customer' && ((currentStatus as any) === OnboardingStatus.PROFILE_COMPLETED || (currentStatus as any) === 'profile_completed')) {
           updatedStatus = OnboardingStatus.COMPLETED;
         }
 
@@ -423,10 +426,10 @@ export const AuthService = {
         isNewUser: !isExistingUser,
         accessToken,
         refreshToken,
-        onboarding_status: userData?.onboarding_status || OnboardingStatus.PHONE_VERIFIED, // Ensure status is returned
+        onboarding_status: userData?.onboarding_status || (role === 'driver' ? DriverOnboardingStatus.PHONE_VERIFIED : OnboardingStatus.PHONE_VERIFIED), // Ensure status is returned
       };
     } catch (error: any) {
-      console.error('OTP Verification Error:', error);
+      logger.error(`OTP Verification Error: ${error}`);
       if (error.statusCode) {
         throw error;
       }

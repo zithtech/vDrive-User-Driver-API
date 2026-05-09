@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PaymentService } from '../payments/payment.service';
+import { logger } from '../../shared/logger';
 
 export const PaymentController = {
    async createOrder(req: Request, res: Response): Promise<Response> {
@@ -22,7 +23,7 @@ export const PaymentController = {
         currency: order.currency
       });
     } catch (error) {
-      console.error('Controller Error (createOrder):', error);
+      logger.error(`Controller Error (createOrder): ${error}`);
       return res.status(500).json({ message: 'Failed to create Razorpay order.' });
     }
   },
@@ -43,7 +44,7 @@ export const PaymentController = {
         return res.status(400).json({ success: false, message: 'Invalid payment signature.' });
       }
     } catch (error) {
-      console.error('Controller Error (verifyPayment):', error);
+      logger.error(`Controller Error (verifyPayment): ${error}`);
       return res.status(500).json({ message: 'Internal server error during verification.' });
     }
   },

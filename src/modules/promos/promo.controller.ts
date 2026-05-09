@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { PromoService } from './promo.service';
 import { successResponse } from '../../shared/errorHandler';
+import { logger } from '../../shared/logger';
 
 export const PromoController = {
   /**
@@ -18,7 +19,7 @@ export const PromoController = {
       const result = await PromoService.validatePromo(code, driverId, Number(amount));
       return successResponse(res, 200, result.message || 'Validation complete', result);
     } catch (error: any) {
-      console.error('Error in validatePromo:', error.message);
+      logger.error(`Error in validatePromo: ${error.message}`);
       next(error);
     }
   },

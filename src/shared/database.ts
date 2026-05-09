@@ -1,9 +1,10 @@
 import { Pool } from 'pg';
+import { logger } from './logger';
 
 let pool: Pool;
 
 export const connectDatabase = async () => {
-  console.log(process.env.DB_HOST, 'process.env.DB_HOST');
+  logger.info(`${process.env.DB_HOST} process.env.DB_HOST`);
   if (!pool) {
     pool = new Pool({
       host: process.env.DB_HOST || 'localhost',
@@ -20,9 +21,9 @@ export const connectDatabase = async () => {
 
   try {
     await pool.query('SELECT NOW()'); // test connection
-    console.log('✅ Connected to PostgreSQL');
+    logger.info('✅ Connected to PostgreSQL');
   } catch (error) {
-    console.error('❌ PostgreSQL connection error:', error);
+    logger.error('❌ PostgreSQL connection error:', error);
     throw error;
   }
 

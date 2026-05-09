@@ -82,6 +82,15 @@ export const TripController = {
         await UserNotifications.bookingConfirmed(userfcmtoken, trip.trip_id);
       }
 
+      // If live ride, broadcast to nearby drivers (Expanding search)
+      if (trip.booking_type === BookingType.LIVE) {
+        const { DriverService } = require('../drivers/driver.service');
+        const io = req.app.get('io');
+        DriverService.findNearbyDrivers(io, Number(trip.pickup_lng), Number(trip.pickup_lat), trip).catch((err: any) => 
+          logger.error(`Automatic broadcast failed for trip ${trip.trip_id}: ${err.message}`)
+        );
+      }
+
       // If scheduled ride, broadcast to all eligible drivers (Online & Offline)
       if (trip.booking_type === BookingType.SCHEDULED) {
         const { TripSchedulerService } = require('./trip-scheduler.service');
@@ -358,7 +367,6 @@ export const TripController = {
   async getAllTripsWithChanges(req: Request, res: Response, next: NextFunction) {
     try {
       const trips = await TripService.getAllTripsWithChanges();
-      // console.log(trips, "trips");
       if (!trips) {
         throw { statusCode: 204, message: 'Trip data are Empty' };
       }

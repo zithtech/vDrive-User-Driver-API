@@ -2,6 +2,9 @@ import { DriverDocumentsRepository } from './driver-documents.repository';
 import { DriverDocument, DocumentType, DocumentStatus } from './driver-documents.model';
 import { logger } from '../../shared/logger';
 import { query } from '../../shared/database';
+import { DriverRepository } from './driver.repository';
+import { notificationService } from '../../services/notificationService';
+import { DriverOnboardingStatus } from '../../enums/user.enums';
 
 export class DriverDocumentsService {
   static async getDriverDocuments(driverId: string): Promise<DriverDocument[]> {
@@ -60,15 +63,15 @@ export class DriverDocumentsService {
     }
 
     await query(
-      `UPDATE drivers SET onboarding_status = 'DOCS_SUBMITTED', documents_submitted = true, updated_at = NOW() WHERE id = $1`,
-      [driverId]
+      `UPDATE drivers SET onboarding_status = $1, documents_submitted = true, updated_at = NOW() WHERE id = $2`,
+      [DriverOnboardingStatus.DOCS_SUBMITTED, driverId]
     );
   }
 
   /**
    * Helper to sync overall driver KYC status based on current documents
    */
-  private static async syncKYCStatus(driverId: string): Promise<void> {
+  public static async syncKYCStatus(driverId: string): Promise<void> {
     const allDocs = await DriverDocumentsRepository.findByDriverId(driverId);
 
     const mandatoryTypes: DocumentType[] = [
@@ -88,10 +91,10 @@ export class DriverDocumentsService {
 
     if (allVerified) {
       overallStatus = 'verified';
-      onboardingStatusUpdate = 'DOCUMENTS_APPROVED';
+      onboardingStatusUpdate = DriverOnboardingStatus.DOCUMENTS_APPROVED;
     } else if (anyRejected) {
       overallStatus = 'rejected';
-      onboardingStatusUpdate = 'DOCS_REJECTED';
+      onboardingStatusUpdate = DriverOnboardingStatus.DOCS_REJECTED;
     }
 
     const kycData = {
@@ -99,7 +102,29 @@ export class DriverDocumentsService {
       verifiedAt: overallStatus === 'verified' ? new Date().toISOString() : null
     };
 
-    let sql = 'UPDATE drivers SET kyc = kyc || $1';
+    // ── SYNC PROFILE PHOTO ──
+    // If we have a PROFILE_SELFIE, sync it to the main profile_pic_url field
+    const selfieDoc = allDocs.find(d => d.document_type === DocumentType.PROFILE_SELFIE);
+    let selfieUrl = null;
+    if (selfieDoc && selfieDoc.document_url) {
+      const rawUrl = selfieDoc.document_url;
+      if (typeof rawUrl === 'object') {
+        selfieUrl = rawUrl.url || rawUrl.front || null;
+      } else if (typeof rawUrl === 'string') {
+        if (rawUrl.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(rawUrl);
+            selfieUrl = parsed.url || parsed.front || rawUrl;
+          } catch (e) {
+            selfieUrl = rawUrl;
+          }
+        } else {
+          selfieUrl = rawUrl;
+        }
+      }
+    }
+
+    let sql = 'UPDATE drivers SET kyc = COALESCE(kyc, \'{}\'::jsonb) || $1';
     const params: any[] = [JSON.stringify(kycData), driverId];
 
     if (onboardingStatusUpdate) {
@@ -107,20 +132,59 @@ export class DriverDocumentsService {
       params.push(onboardingStatusUpdate);
     }
 
+    if (selfieUrl) {
+      sql += `, profile_pic_url = $${params.length + 1}`;
+      params.push(selfieUrl);
+    }
+
     sql += ', updated_at = NOW() WHERE id = $2';
 
     await query(sql, params);
 
     logger.info(`Driver ${driverId} KYC status synced to ${overallStatus} and onboarding status to ${onboardingStatusUpdate || 'unchanged'}`);
+
+    // Send Notification on approval or rejection
+    if (onboardingStatusUpdate) {
+      try {
+        const driver = await DriverRepository.findById(driverId);
+        if (driver && driver.fcm_token) {
+          if (onboardingStatusUpdate === DriverOnboardingStatus.DOCUMENTS_APPROVED) {
+            await notificationService.sendPushNotification(driver.fcm_token, {
+              title: 'Account Approved!',
+              body: 'Your documents have been verified. You can now go online and start earning.',
+              data: {
+                type: 'ACCOUNT_APPROVED',
+                onboarding_status: DriverOnboardingStatus.DOCUMENTS_APPROVED
+              }
+            });
+          } else if (onboardingStatusUpdate === DriverOnboardingStatus.DOCS_REJECTED) {
+            const rejectedDocs = mandatoryDocs.filter(d => d.status === DocumentStatus.REJECTED);
+            const docNames = rejectedDocs.map(d => d.document_type.replace(/_/g, ' ').toUpperCase()).join(', ');
+            
+            await notificationService.sendPushNotification(driver.fcm_token, {
+              title: 'Documents Need Correction',
+              body: `Your ${docNames} was rejected. Please re-upload it with clear images.`,
+              data: {
+                type: 'DOCS_REJECTED',
+                onboarding_status: DriverOnboardingStatus.DOCS_REJECTED
+              }
+            });
+          }
+        }
+      } catch (err: any) {
+        logger.error(`Failed to send status update notification: ${err.message}`);
+      }
+    }
   }
 
   static async verifyDocument(
     id: string,
     status: DocumentStatus,
-    remarks?: string
+    remarks?: string,
+    rejection_reason?: string
   ): Promise<DriverDocument | null> {
     logger.info(`Verifying document ${id} with status: ${status}`);
-    const document = await DriverDocumentsRepository.updateStatus(id, status, remarks);
+    const document = await DriverDocumentsRepository.updateStatus(id, status, remarks, rejection_reason);
 
     if (document) {
       // Sync overall KYC status for the driver

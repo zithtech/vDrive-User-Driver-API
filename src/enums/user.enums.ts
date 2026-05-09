@@ -25,6 +25,18 @@ export enum OnboardingStatus {
   COMPLETED = 'completed',
 }
 
+export enum DriverOnboardingStatus {
+  PENDING = 'PENDING',
+  PHONE_VERIFIED = 'PHONE_VERIFIED',
+  PROFILE_COMPLETED = 'PROFILE_COMPLETED',
+  ADDRESS_COMPLETED = 'ADDRESS_COMPLETED',
+  DOCS_SUBMITTED = 'DOCS_SUBMITTED',
+  DOCUMENTS_APPROVED = 'DOCUMENTS_APPROVED',
+  SUBSCRIPTION_ACTIVE = 'SUBSCRIPTION_ACTIVE',
+  DOCS_REJECTED = 'DOCS_REJECTED',
+  ACTIVE = 'ACTIVE',
+}
+
 export interface SessionPayload {
   id: string;
   deviceId: string;

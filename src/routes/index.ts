@@ -30,6 +30,31 @@ router.get('/health-check', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'Server is healthy' });
 });
 
+router.get('/media/proxy', async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url || typeof url !== 'string') return res.status(400).send('URL is required');
+    
+    // Check if it's an S3 URL from our bucket
+    if (url.includes('s3.eu-north-1.amazonaws.com')) {
+      const key = url.split('.amazonaws.com/')[1];
+      if (!key) return res.status(400).send('Invalid S3 URL');
+      
+      const { s3Service } = require('../modules/s3/s3.service');
+      const signedUrl = await s3Service.getReadUrl(decodeURIComponent(key));
+      
+      // Allow cross-origin loading for images to prevent browser blocking (CORP/CORS)
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      return res.redirect(signedUrl);
+    }
+    
+    return res.status(400).send('Only S3 URLs are supported for proxying currently');
+  } catch (error) {
+    logger.error('Media proxy error:', error);
+    res.status(500).send('Error proxying media');
+  }
+});
+
 // ✅ PUBLIC ROUTES
 router.use('/auth', authRoutes);
 router.use('/referrals', referralRoutes);

@@ -1,5 +1,6 @@
 import nodemailer, { Transporter, SendMailOptions } from 'nodemailer';
 import config from '../../config';
+import { logger } from '../../shared/logger';
 
 // Initialize the Nodemailer Transporter
 const transporter: Transporter = nodemailer.createTransport({
@@ -18,9 +19,9 @@ export const EmailRepository = {
     async sendMail(mailOptions: SendMailOptions): Promise<void> {
         try {
             const info = await transporter.sendMail(mailOptions);
-            console.log('Email sent successfully:', info.response);
+            logger.info(`Email sent successfully: ${info.response}`);
         } catch (error) {
-            console.error('Email sending failed:', error);
+            logger.error('Email sending failed:', error);
             // Throw a custom error to be handled by the Service layer
             throw new Error("Failed to connect to email service or send mail.");
         }

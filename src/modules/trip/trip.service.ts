@@ -85,8 +85,9 @@ export const TripService = {
         // We continue trip creation but without the coupon
       }
     }
+    let user: any = null;
     if(data.user_id){
-      const user = await UserRepository.findById(data.user_id ,UserStatus.ACTIVE);
+      user = await UserRepository.findById(data.user_id ,UserStatus.ACTIVE);
       if(user){
        data.otp = user.otp
       }
@@ -95,6 +96,11 @@ export const TripService = {
     const trip = await TripRepository.createTrip(data);
     if (!trip) {
       throw { statusCode: 500, message: 'Trip creation failed' };
+    }
+
+    // ✅ Attach user full_name so that it can be used during broadcast for self-booked rides
+    if (user && (trip.is_for_self || trip.is_for_self === null)) {
+      (trip as any).passenger_name = user.full_name;
     }
 
     if (trip) {
@@ -138,7 +144,7 @@ export const TripService = {
         ? ActorType.Driver
         : ActorType.Admin;
 
-    // ── 4. Log — state machine handles everything ─────────────────────────────
+    // ── 5. Log — state machine handles everything ─────────────────────────────
     await tripTransactionLogger.logAll({
       trip,
       previousSnapshot,
@@ -147,24 +153,6 @@ export const TripService = {
       actor_id: trip.updated_by ?? null,
       metadata: { changed_keys: fields },
     });
-
-    // ── 5. Notify Driver if Assigned ─────────────────────────────────────────
-    if (data.trip_status === TripStatus.ASSIGNED && trip.driver_id) {
-      try {
-        emitToRoom(`driver_${trip.driver_id}`, TripSocketEvent.TRIP_ASSIGNED, {
-          tripId: trip.trip_id,
-          status: TripStatus.ASSIGNED,
-          trip: trip,
-        });
-
-        const driverToken = await DriverRepository.getFcmTokenById(trip.driver_id);
-        if (driverToken) {
-          await DriverNotifications.rideAssigned(driverToken, trip.trip_id || '');
-        }
-      } catch (err: any) {
-        logger.error(`Failed to notify driver about assignment: ${err.message}`);
-      }
-    }
 
     return trip;
   },
@@ -194,14 +182,32 @@ export const TripService = {
     // Find driver's private room
     const driverRoom = `driver_${driverId}`;
 
-    // Notify Driver
+    // Notify Driver via Socket
     io.to(driverRoom).emit(TripSocketEvent.NEW_TRIP_REQUEST, {
+      ...tripData,
+      id: tripData.id,
+      trip_id: tripData.id,
       tripId: tripData.id,
       pickup: tripData.pickup_address,
       drop: tripData.drop_address,
       fare: tripData.fare,
       passengerName: tripData.user_name
     });
+
+    // ✅ Also send Push Notification
+    try {
+      const driverToken = await DriverRepository.getFcmTokenById(driverId);
+      if (driverToken) {
+        await DriverNotifications.newRideRequest(
+          driverToken,
+          String(tripData.id),
+          tripData.pickup_address,
+          tripData.drop_address
+        );
+      }
+    } catch (err: any) {
+      logger.error(`Failed to send push notification in requestRide: ${err.message}`);
+    }
   },
 
   async acceptTrip(tripId: string, driverId: string) {
@@ -294,7 +300,7 @@ export const TripService = {
         },
       });
 
-      console.log(`🗑️ Broadcating TRIP_REMOVED for trip: ${tripId}`);
+      logger.info(`🗑️ Broadcating TRIP_REMOVED for trip: ${tripId}`);
 
       emitTripRemoved(tripId);
 
@@ -311,7 +317,7 @@ export const TripService = {
 
       const customerToken = await UserRepository.getFcmTokenById(trip.user_id);
       if (!customerToken) {
-        console.warn(`Cannot send notification: User ${trip.user_id} has no FCM token.`);
+        logger.warn(`Cannot send notification: User ${trip.user_id} has no FCM token.`);
         return;
       }
       await UserNotifications.driverAssigned(
@@ -321,7 +327,7 @@ export const TripService = {
       );
       return updatedTrip;
     } catch (error) {
-      console.error("Acceptance Error in Service:", error);
+      logger.error("Acceptance Error in Service:", error);
       throw error;
     }
   },
@@ -342,22 +348,61 @@ export const TripService = {
     }
 
     const broadcast = () => {
-      console.log(`📡 Broadcasting Trip ${tripId} to ${drivers.length} drivers`);
+      logger.info(`📡 Broadcasting Trip ${tripId} to ${drivers.length} drivers`);
 
       drivers.forEach(driver => {
-        emitToRoom(`driver_${driver.id}`, TripSocketEvent.NEW_TRIP_REQUEST, {
+        // Robust parsing of passenger details if it's a string
+        let passengerDetails = tripData[0].passenger_details;
+        if (typeof passengerDetails === 'string') {
+          try {
+            passengerDetails = JSON.parse(passengerDetails);
+          } catch (e) {
+            logger.error(`Error parsing passenger_details for trip ${tripId}: ${e}`);
+          }
+        }
+
+        const payload = {
           tripId,
           pickup: tripData[0].pickup_address,
           drop: tripData[0].drop_address,
           fare: tripData[0].total_fare,
-          passengerName: tripData[0].passenger_details?.name || "Passenger",
+          passengerName: passengerDetails?.name || tripData[0].passenger_name || "Passenger",
+          ride_type: tripData[0].ride_type,
+          booking_type: tripData[0].booking_type,
+          scheduled_start_time: tripData[0].scheduled_start_time,
+          otp: tripData[0].otp,
+          pickup_lat: tripData[0].pickup_lat,
+          pickup_lng: tripData[0].pickup_lng,
+          drop_lat: tripData[0].drop_lat,
+          drop_lng: tripData[0].drop_lng,
 
           // Driver-specific data
           distanceToUser: driver.distance_meters,
           eta: driver.eta || null,
 
           remaining: 15, // UI Timer reset
-        });
+          createdAt: new Date().toISOString(), // 🕒 Time sync for background/cold-start
+        };
+
+        logger.info(`📤 Sending NEW_TRIP_REQUEST to driver_${driver.id}: ${JSON.stringify(payload)}`);
+        emitToRoom(`driver_${driver.id}`, TripSocketEvent.NEW_TRIP_REQUEST, payload);
+
+        // ✅ Also send Push Notification (Only on first broadcast to avoid spamming)
+        if (retries === 0 && driver.fcm_token) {
+          DriverNotifications.newRideRequest(
+            driver.fcm_token,
+            String(tripId),
+            tripData[0].pickup_address,
+            tripData[0].drop_address,
+            {
+                fare: String(tripData[0].total_fare),
+                passengerName: passengerDetails?.name || tripData[0].passenger_name || "Passenger",
+                createdAt: payload.createdAt,
+                pickup_lat: String(tripData[0].pickup_lat),
+                pickup_lng: String(tripData[0].pickup_lng),
+            }
+          ).catch(err => logger.error(`FCM Broadcast Error for driver ${driver.id}: ${err.message}`));
+        }
       });
     };
 
@@ -371,7 +416,7 @@ export const TripService = {
       try {
         // Stop if too many retries
         if (retries >= MAX_RETRIES) {
-          console.log(`🛑 Max retries reached. Stopping trip broadcast ${tripId}`);
+          logger.info(`🛑 Max retries reached. Stopping trip broadcast ${tripId}`);
           clearInterval(timer);
           tripBroadcastTimers.delete(tripId);
           return;
@@ -387,18 +432,18 @@ export const TripService = {
 
         // Stop conditions
         if (!result.rows.length || ![TripStatus.REQUESTED].includes(status)) {
-          console.log(`🛑 Stopping broadcast for ${tripId}. Current Status: ${status}`);
+          logger.info(`🛑 Stopping broadcast for ${tripId}. Current Status: ${status}`);
           clearInterval(timer);
           tripBroadcastTimers.delete(tripId);
           return;
         }
 
         // Re-broadcast
-        console.log(`🔄 Trip ${tripId} still pending. Re-sending... Retry ${retries}`);
+        logger.info(`🔄 Trip ${tripId} still pending. Re-sending... Retry ${retries}`);
         broadcast();
 
       } catch (error) {
-        console.error("Postgres Error:", error);
+        logger.error("Postgres Error:", error);
       }
     }, RETRY_INTERVAL);
 
@@ -553,7 +598,7 @@ export const TripService = {
           });
         }
       } catch (err: any) {
-        console.error('Failed to reset driver availability:', err.message);
+        logger.error(`Failed to reset driver availability: ${err.message}`);
       }
     }
 
@@ -619,7 +664,7 @@ export const TripService = {
         }
       }
     } catch (err: any) {
-      console.error('Failed to send cancellation notifications:', err.message);
+      logger.error(`Failed to send cancellation notifications: ${err.message}`);
     }
 
     await TripTransactionService.logEvent({
@@ -633,14 +678,24 @@ export const TripService = {
       metadata: { cancel_reason: cancelReason },
     });
 
-         emitTripUpdate(tripId, TripSocketEvent.TRIP_CANCELLED, {
-          tripId: tripId,
-          status: updatedTrip.trip_status,
-          cancelledBy: cancelBy,
-          cancelReason: cancelReason,
-          notes: notes,
-          timestamp: new Date().toISOString(),
-        });
+    emitTripUpdate(tripId, TripSocketEvent.TRIP_CANCELLED, {
+      tripId: tripId,
+      status: updatedTrip.trip_status,
+      cancelledBy: cancelBy,
+      cancelReason: cancelReason,
+      notes: notes,
+      timestamp: new Date().toISOString(),
+    });
+
+    // 🛡️ PRODUCTION: Also emit TRIP_REMOVED so the driver screen clears immediately
+    try {
+      const { emitToRoom } = require('../../sockets/socket');
+      if (trip?.driver_id) {
+        emitToRoom(`driver_${trip.driver_id}`, 'TRIP_REMOVED', { tripId: tripId });
+      }
+    } catch (e) {
+      logger.error('Failed to emit TRIP_REMOVED on cancellation:', e);
+    }
 
     broadcastTripUpdate(tripId, { status: newStatus, type: 'trip_updated', trip: updatedTrip });
 
@@ -651,6 +706,21 @@ export const TripService = {
   async startTrip(tripId: string) {
     const trip = await TripRepository.findById(tripId);
     if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+
+    // If trip is in VERIFICATION_PENDING, only the verification approval flow should start it
+    // This check allows startTrip to be called from verifyTripGranular (status is VERIFICATION_PENDING)
+    // but blocks manual startTrip calls from the driver app
+    if (trip.trip_status === TripStatus.VERIFICATION_PENDING) {
+      // Allow - this is called from the verification approval flow
+      logger.info(`Starting trip ${tripId} after verification approval`);
+    } else if (trip.trip_status !== TripStatus.ARRIVED && trip.trip_status !== TripStatus.ACCEPTED) {
+      // Block if status is not a valid pre-start status
+      if (trip.trip_status === TripStatus.LIVE) {
+        // Already started, return current state
+        return trip;
+      }
+      throw { statusCode: 400, message: `Cannot start trip. Current status: ${trip.trip_status}` };
+    }
 
     await this.updateTrip(tripId, {
       trip_status: TripStatus.LIVE,
@@ -684,7 +754,7 @@ export const TripService = {
         await DriverNotifications.rideStarted(driverfcmtoken, trip.trip_id || "");
       }
     } catch (err: any) {
-      console.error('Failed to notify user about ride start:', err.message);
+      logger.error(`Failed to notify user about ride start: ${err.message}`);
     }
 
     const updatedTrip = await TripRepository.findById(tripId);
@@ -699,7 +769,7 @@ export const TripService = {
         trip: updatedTrip,
       });
     } catch (err: any) {
-      console.error('Failed to emit trip update:', err.message);
+      logger.error(`Failed to emit trip update: ${err.message}`);
     }
 
     return updatedTrip;
@@ -760,7 +830,7 @@ export const TripService = {
         await DriverNotifications.rideCompleted(driverfcmtoken, trip.trip_id || "", String(trip.total_fare || 0));
       }
     } catch (err: any) {
-      console.error('Failed to notify user about ride completion:', err.message);
+      logger.error(`Failed to notify user about ride completion: ${err.message}`);
     }
 
     // Referral Rewards Trigger
@@ -804,7 +874,7 @@ export const TripService = {
         trip: updatedTrip,
       });
     } catch (err: any) {
-      console.error('Failed to emit trip completion:', err.message);
+      logger.error(`Failed to emit trip completion: ${err.message}`);
     }
 
     return updatedTrip;
@@ -826,7 +896,7 @@ export const TripService = {
         await UserNotifications.driverArriving(fcmToken, driver?.full_name || "Driver", tripId);
       }
     } catch (err: any) {
-      console.error('Failed to notify user about driver arriving:', err.message);
+      logger.error(`Failed to notify user about driver arriving: ${err.message}`);
     }
 
     const updatedTrip = await TripRepository.findById(tripId);
@@ -838,7 +908,7 @@ export const TripService = {
         trip: updatedTrip,
       });
     } catch (err: any) {
-      console.error('Failed to emit trip arriving update:', err.message);
+      logger.error(`Failed to emit trip arriving update: ${err.message}`);
     }
 
     return updatedTrip;
@@ -860,7 +930,7 @@ export const TripService = {
         await UserNotifications.driverArrived(fcmToken, driver?.full_name || "Driver", tripId);
       }
     } catch (err: any) {
-      console.error('Failed to notify user about driver arrival:', err.message);
+      logger.error(`Failed to notify user about driver arrival: ${err.message}`);
     }
 
     const updatedTrip = await TripRepository.findById(tripId);
@@ -874,7 +944,7 @@ export const TripService = {
         trip: updatedTrip,
       });
     } catch (err: any) {
-      console.error('Failed to emit trip arrival:', err.message);
+      logger.error(`Failed to emit trip arrival: ${err.message}`);
     } 
 
     return updatedTrip;
@@ -897,7 +967,7 @@ export const TripService = {
         await UserNotifications.destinationReached(fcmToken, driver?.full_name || "Driver", tripId);
       }
     } catch (err: any) {
-      console.error('Failed to notify user about driver arrival:', err.message);
+      logger.error(`Failed to notify user about driver arrival: ${err.message}`);
     }
 
     const updatedTrip = await TripRepository.findById(tripId);
@@ -911,7 +981,7 @@ export const TripService = {
         trip: updatedTrip,
       });
     } catch (err: any) {
-      console.error('Failed to emit trip arrival:', err.message);
+      logger.error(`Failed to emit trip arrival: ${err.message}`);
     } 
 
     return updatedTrip;
@@ -926,38 +996,104 @@ export const TripService = {
   },
 
   async assignToDriver(tripId: string, driverId: string) {
-    const trip = await TripRepository.findById(tripId);
-    if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+    const { acquireLock, releaseLock } = require('../../shared/redis');
+    const lockKey = `lock:assign:${tripId}`;
+    let lockAcquired = false;
 
-    // Update trip with driver and status ASSIGNED
-    const updatedTrip = await this.updateTrip(tripId, {
-      driver_id: driverId,
-      trip_status: TripStatus.ASSIGNED,
-    });
-
-    // Notify Driver
     try {
-      const { NotificationService } = require('../notifications/notification.service');
-      await NotificationService.sendNotificationToDriver(
-        driverId,
-        'Ride Assigned to You',
-        `An admin has specifically assigned a trip to you. Please accept to proceed.`,
-        {
-          type: 'ride_request',
-          trip_id: tripId,
-          pickup_address: updatedTrip?.pickup_address,
-          drop_address: updatedTrip?.drop_address,
-          total_fare: updatedTrip?.total_fare?.toString() || '₹--',
-          ride_type: updatedTrip?.ride_type,
-          booking_type: updatedTrip?.booking_type,
-        }
-      );
-      logger.info(`Assignment request sent to driver ${driverId} for trip ${tripId}`);
-    } catch (err: any) {
-      logger.error(`Failed to send assignment notification to driver ${driverId}: ${err.message}`);
-    }
+      // 🛡️ 1. Acquire Global Lock to prevent duplicate assignments
+      lockAcquired = await acquireLock(lockKey, 10000);
+      if (!lockAcquired) {
+        throw { statusCode: 429, message: 'Assignment in progress for this trip' };
+      }
 
-    return updatedTrip;
+      // 🔍 2. Verify Trip Availability
+      const trip = await TripRepository.findById(tripId);
+      if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+
+      if (trip.trip_status !== TripStatus.REQUESTED && trip.trip_status !== TripStatus.ASSIGNED) {
+         // If it's already assigned to this driver, that's fine (idempotent)
+         if (trip.driver_id === driverId) return trip;
+         throw { statusCode: 400, message: `Trip is no longer available (Status: ${trip.trip_status})` };
+      }
+
+      // 🔍 3. Verify Driver Availability
+      const driver = await DriverRepository.findById(driverId);
+      if (!driver) throw { statusCode: 404, message: 'Driver not found' };
+      if (driver.availability?.status === DriverAvailabilityStatus.ON_TRIP) {
+        throw { statusCode: 400, message: 'Driver is already on an active trip' };
+      }
+
+      // 📝 4. Update Trip status to ASSIGNED
+      await this.updateTrip(tripId, {
+        driver_id: driverId,
+        trip_status: TripStatus.ASSIGNED,
+      });
+
+      // 📝 4b. Update Driver status to prevent double-assignment
+      await DriverRepository.update(driverId, {
+        availability: {
+          ...driver.availability,
+          status: trip.booking_type === 'SCHEDULED' 
+            ? DriverAvailabilityStatus.HAS_UPCOMING_SCHEDULED 
+            : DriverAvailabilityStatus.ON_TRIP,
+        },
+      });
+
+      // 🔄 5. RE-FETCH full details (including passenger names)
+      const updatedTrip = await TripRepository.findById(tripId);
+      if (!updatedTrip) throw { statusCode: 500, message: 'Failed to retrieve trip after update' };
+
+      // 📡 6. Notify Driver (Consolidated Socket + FCM)
+      try {
+        const { emitToRoom } = require('../../sockets/socket');
+        const { TripSocketEvent } = require('../../sockets/socket.types');
+        
+        const roomName = `driver_${String(driverId)}`;
+        logger.info(`[SOCKET] Emitting TRIP_ASSIGNED to ${roomName} for trip ${tripId}`);
+        
+        emitToRoom(roomName, TripSocketEvent.TRIP_ASSIGNED, {
+          ...updatedTrip,
+          type: 'TRIP_ASSIGNED',
+          status: TripStatus.ASSIGNED,
+          trip_id: tripId,
+        });
+
+        // 7. FCM for Push Notification/Background wake
+        const { NotificationService } = require('../notifications/notification.service');
+        const passenger: any = updatedTrip?.user_details || {};
+        
+        await NotificationService.sendNotificationToDriver(
+          driverId,
+          'Ride Assigned to You',
+          `Pickup: ${updatedTrip?.pickup_address || 'N/A'} → Drop: ${updatedTrip?.drop_address || 'N/A'}`,
+          {
+            type: 'ASSIGNED_RIDE',
+            trip_id: tripId,
+            pickup_address: updatedTrip?.pickup_address || '',
+            drop_address: updatedTrip?.drop_address || '',
+            total_fare: updatedTrip?.total_fare?.toString() || '₹--',
+            ride_type: updatedTrip?.ride_type || '',
+            booking_type: updatedTrip?.booking_type || '',
+            pickup_lat: updatedTrip?.pickup_lat?.toString() || '',
+            pickup_lng: updatedTrip?.pickup_lng?.toString() || '',
+            drop_lat: updatedTrip?.drop_lat?.toString() || '',
+            drop_lng: updatedTrip?.drop_lng?.toString() || '',
+            distance_km: updatedTrip?.distance_km?.toString() || '',
+            passenger_name: passenger?.full_name || passenger?.name || 'Passenger',
+            passenger_phone: passenger?.phone_number || passenger?.phone || '',
+            passenger_rating: passenger?.rating?.toString() || '',
+            createdAt: new Date().toISOString(),
+          }
+        );
+      } catch (notifyErr: any) {
+        logger.error(`Notification Error in assignToDriver: ${notifyErr.message}`);
+      }
+
+      return updatedTrip;
+    } finally {
+      if (lockAcquired) await releaseLock(lockKey);
+    }
   },
 
   async triggerBroadcast(tripId: string, radius: number, io: Server) {

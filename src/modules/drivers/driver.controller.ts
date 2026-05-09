@@ -7,8 +7,9 @@ import { Server } from 'socket.io';
 import { logger } from '../../shared/logger';
 import { TripRepository } from '../trip/trip.repository';
 import { formFullName } from '../../utilities/helper';
-import { UserStatus } from '../../enums/user.enums';
+import { OnboardingStatus, DriverOnboardingStatus, UserStatus } from '../../enums/user.enums';
 import { Driver } from './driver.model';
+import config from '../../config';
 
 export const DriverController = {
   async addDriver(req: Request, res: Response, next: NextFunction) {
@@ -61,7 +62,10 @@ export const DriverController = {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = parseInt(req.query.offset as string) || 0;
-      const drivers = await DriverService.getAllDrivers(limit, offset);
+      const status = req.query.status as string;
+      const onboardingStatus = req.query.onboardingStatus as string;
+      
+      const drivers = await DriverService.getAllDrivers(limit, offset, status, onboardingStatus);
       return successResponse(res, 200, 'Drivers fetched successfully', drivers);
     } catch (err) {
       next(err);
@@ -114,7 +118,7 @@ export const DriverController = {
       return successResponse(res, 200, 'Driver documents verified and account activated successfully', {
         id,
         status: 'active',
-        onboarding_status: 'ACTIVE'
+        onboarding_status: DriverOnboardingStatus.ACTIVE
       });
     } catch (err: any) {
       logger.error(`adminVerifyDriver error: ${err.message || err}`);
@@ -207,7 +211,7 @@ export const DriverController = {
               : trip.passenger_details;
           }
         } catch (e) {
-          console.error('Error parsing passenger_details', e);
+          logger.error(`Error parsing passenger_details: ${e}`);
         }
 
         return {
@@ -357,7 +361,7 @@ export const DriverController = {
       const drivers = await DriverService.getAvailableDrivers(
         Number(lng),
         Number(lat),
-        Number(radius) || 500
+        Number(radius) || config.defaultSearchRadius
       );
 
       return res.status(200).json({ success: true, data: drivers });

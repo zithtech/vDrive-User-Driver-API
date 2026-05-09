@@ -2,6 +2,8 @@ import { getClient, query } from '../../shared/database';
 import { logger } from '../../shared/logger';
 import { Driver, CreateDriverInput, UpdateDriverInput, Document, KYC, Credit, Availability, Performance, Payments } from './driver.model';
 import { DriverReferralRepository } from '../driver-referrals/driver-referral.repository';
+import { DriverOnboardingStatus } from '../../enums/user.enums';
+import { s3Service } from '../s3/s3.service';
 
 export const DriverRepository = {
   async findDriverById(id: string): Promise<Driver | null> {
@@ -44,7 +46,7 @@ export const DriverRepository = {
           driverData.kyc_status
             ? JSON.stringify(driverData.kyc_status)
             : '{"overallStatus": "pending", "verifiedAt": null}',
-          driverData.onboarding_status || 'PHONE_VERIFIED',
+          driverData.onboarding_status || DriverOnboardingStatus.PHONE_VERIFIED,
           driverData.documents_submitted || false,
           driverData.credit
             ? JSON.stringify(driverData.credit)
@@ -105,7 +107,7 @@ export const DriverRepository = {
       await client.query('COMMIT');
 
       // Return formatted driver object
-      return DriverRepository.mapToDriver(driver, documents, [], [], []);
+      return await DriverRepository.mapToDriver(driver, documents, [], [], []);
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -170,6 +172,10 @@ export const DriverRepository = {
       if (driverData.status) {
         driverFields.push(`status = $${paramCount++}`);
         driverValues.push(driverData.status);
+      }
+      if (driverData.status_reason) {
+        driverFields.push(`status_reason = $${paramCount++}`);
+        driverValues.push(driverData.status_reason);
       }
       if (driverData.onboarding_status) {
         driverFields.push(`onboarding_status = $${paramCount++}`);
@@ -355,7 +361,7 @@ export const DriverRepository = {
     if (driverResult.rows.length === 0) return null;
 
     const driver = driverResult.rows[0];
-    logger.info(`driver`, driver);
+    logger.info(`Driver data fetched: ${JSON.stringify(driver)}`);
     // Get completed trips count
     try {
       const completedTripsResult = await query(
@@ -364,7 +370,7 @@ export const DriverRepository = {
       );
       driver.total_trips = parseInt(completedTripsResult.rows[0].count);
     } catch (error) {
-      console.error(`Error fetching total completed trips for driver ${id}:`, error);
+      logger.error(`Error fetching total completed trips for driver ${id}: ${error}`);
       driver.total_trips = 0;
     }
 
@@ -384,7 +390,7 @@ export const DriverRepository = {
       );
       recharges = rechargesResult.rows;
     } catch (error) {
-      console.error(`Error fetching recharges for driver ${id}:`, error);
+      logger.error(`Error fetching recharges for driver ${id}: ${error}`);
     }
 
     // Get credit usage
@@ -396,7 +402,7 @@ export const DriverRepository = {
       );
       creditUsage = creditUsageResult.rows;
     } catch (error) {
-      console.error(`Error fetching credit usage for driver ${id}:`, error);
+      logger.error(`Error fetching credit usage for driver ${id}: ${error}`);
     }
 
     // Get active subscription
@@ -412,13 +418,13 @@ export const DriverRepository = {
       );
       activeSubscription = subscriptionResult.rows[0] || null;
     } catch (error) {
-      console.error(`Error fetching active subscription for driver ${id}:`, error);
+      logger.error(`Error fetching active subscription for driver ${id}: ${error}`);
     }
 
     // TODO: Fetch activity logs if table exists, for now pass empty
     const activityLogs: any[] = [];
 
-    return DriverRepository.mapToDriver(
+    return await DriverRepository.mapToDriver(
       driver,
       documents,
       recharges,
@@ -428,11 +434,29 @@ export const DriverRepository = {
     );
   },
 
-  async findAll(limit: number = 50, offset: number = 0): Promise<Driver[]> {
-    const driversResult = await query(
-      'SELECT * FROM drivers ORDER BY created_at DESC LIMIT $1 OFFSET $2',
-      [limit, offset]
-    );
+  async findAll(limit: number = 50, offset: number = 0, status?: string, onboardingStatus?: string): Promise<Driver[]> {
+    let queryStr = 'SELECT * FROM drivers';
+    const params: any[] = [];
+    const conditions: string[] = [];
+
+    if (status) {
+      params.push(status);
+      conditions.push(`status = $${params.length}`);
+    }
+
+    if (onboardingStatus) {
+      params.push(onboardingStatus);
+      conditions.push(`onboarding_status = $${params.length}`);
+    }
+
+    if (conditions.length > 0) {
+      queryStr += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    queryStr += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(limit, offset);
+
+    const driversResult = await query(queryStr, params);
 
     const drivers = [];
     for (const driver of driversResult.rows) {
@@ -440,35 +464,84 @@ export const DriverRepository = {
         const fullDriver = await DriverRepository.findById(driver.id);
         if (fullDriver) drivers.push(fullDriver);
       } catch (error) {
-        console.error(`Error fetching full data for driver ${driver.id}:`, error);
+        logger.error(`Error fetching full data for driver ${driver.id}: ${error}`);
         // Map basic driver data if full fetch fails to prevent breaking the whole list
-        drivers.push(DriverRepository.mapToDriver(driver, [], [], [], []));
+        drivers.push(await DriverRepository.mapToDriver(driver, [], [], [], []));
       }
     }
 
     return drivers;
   },
 
-  mapToDriver(
+  async mapToDriver(
     driver: any,
-    documents: any[],
-    recharges: any[],
-    creditUsage: any[],
-    activityLogs: any[],
-    activeSubscription?: any
-  ): Driver {
-    const fName = driver.first_name || driver.full_name?.split(' ')[0] || '';
-    const lName = driver.last_name || driver.full_name?.split(' ').slice(1).join(' ') || '';
-
+    documents: any[] = [],
+    recharges: any[] = [],
+    creditUsage: any[] = [],
+    activityLogs: any[] = [],
+    activeSubscription: any = null
+  ): Promise<Driver> {
     const safeParse = (data: any) => {
       if (!data) return undefined;
       if (typeof data === 'object') return data;
       try {
         return JSON.parse(data);
       } catch (e) {
-        return data; // Return as is if it fails
+        return data;
       }
     };
+
+    // 🛡️ S3 URL Signing Helper
+    const signUrl = async (img: any) => {
+      if (!img) return undefined;
+      const parsed = safeParse(img);
+      
+      const signSingle = async (url: any) => {
+        if (!url || typeof url !== 'string' || !url.includes('amazonaws.com')) return url;
+        try {
+          const urlObj = new URL(url);
+          const key = urlObj.pathname.startsWith('/') ? urlObj.pathname.substring(1) : urlObj.pathname;
+          return await s3Service.getReadUrl(key);
+        } catch (e) {
+          return url;
+        }
+      };
+
+      if (typeof parsed === 'object') {
+        const result: any = {};
+        if (parsed.url) result.url = await signSingle(parsed.url);
+        if (parsed.front) result.front = await signSingle(parsed.front);
+        if (parsed.back) result.back = await signSingle(parsed.back);
+        return Object.keys(result).length > 0 ? result : parsed;
+      }
+      return await signSingle(parsed);
+    };
+
+    const fName = driver.first_name || '';
+    const lName = driver.last_name || '';
+
+    const profileUrl = await (async () => {
+      const primary = safeParse(driver.profile_pic_url);
+      if (primary) {
+        const url = typeof primary === 'object' ? primary.url || primary.front || undefined : primary;
+        if (url) {
+          logger.info(`[mapToDriver] Resolved image from primary field for driver ${driver.id}`);
+          return await signUrl(url);
+        }
+      }
+      const selfie = documents.find(d => 
+        d.document_type?.toLowerCase() === 'profile_selfie' || 
+        d.document_type?.toLowerCase() === 'profile selfie' ||
+        d.document_type === 'PROFILE_SELFIE'
+      );
+      if (!selfie || !selfie.document_url) return undefined;
+      const selfieUrl = safeParse(selfie.document_url);
+      const url = typeof selfieUrl === 'object' ? selfieUrl.url || selfieUrl.front || undefined : selfieUrl;
+      if (url) {
+        logger.info(`[mapToDriver] Resolved image from selfie document for driver ${driver.id}`);
+      }
+      return await signUrl(url);
+    })();
 
     return {
       driverId: driver.id,
@@ -477,16 +550,24 @@ export const DriverRepository = {
       full_name: driver.full_name,
       phone_number: driver.phone_number,
       email: driver.email,
-      profilePicUrl: driver.profile_pic_url || undefined,
+      profilePicUrl: profileUrl,
+      profile_picture: profileUrl,
+      profile_pic_url: profileUrl,
       date_of_birth: driver.date_of_birth,
       gender: driver.gender,
       address: safeParse(driver.address),
       role: driver.role,
       status: driver.status,
+      status_reason: driver.status_reason,
       rating: parseFloat(driver.rating) || 0,
       total_trips: driver.total_trips || 0,
       total_earnings: parseFloat(driver.total_earnings) || 0,
-      availability: safeParse(driver.availability),
+      availability: safeParse(driver.availability) || {
+        online: false,
+        status: 'OFFLINE',
+        lastActive: null,
+      },
+      last_active: driver.last_active,
       kyc_status: safeParse(driver.kyc),
       onboarding_status: driver.onboarding_status,
       documents_submitted: driver.documents_submitted,
@@ -535,14 +616,17 @@ export const DriverRepository = {
       current_lat: driver.current_lat,
       current_lng: driver.current_lng,
       current_heading: driver.current_heading,
-      documents: documents.map((doc) => ({
+      documents: await Promise.all(documents.map(async (doc) => ({
         documentId: doc.id,
         documentType: doc.document_type,
         documentNumber: doc.document_number,
-        documentUrl: safeParse(doc.document_url),
-        licenseStatus: doc.status || '',
+        documentUrl: await signUrl(doc.document_url),
+        status: doc.status || 'pending',
+        licenseStatus: doc.status || 'pending',
         expiryDate: doc.expiry_date,
-      })),
+        remarks: doc.remarks,
+        verifiedAt: doc.verified_at,
+      }))),
     };
   },
 
@@ -555,7 +639,7 @@ export const DriverRepository = {
     let drivers = [];
 
     for (const radius of radiusTiers) {
-      console.log(`Searching within ${radius} meters...`);
+      logger.info(`Searching within ${radius} meters...`);
 
       drivers = await this.findNearbyDrivers(lng, lat, radius);
 
@@ -573,6 +657,72 @@ export const DriverRepository = {
     };
   },
   async findNearbyDrivers(lng: number, lat: number, radiusMeters: number) {
+    logger.info(`findNearbyDrivers: ${lng}, ${lat}, ${radiusMeters}`);
+    try {
+      const { getRedisClient } = require('../../shared/redis');
+      const redis = getRedisClient();
+
+      // 1. Get real-time drivers within radius from Redis
+      // Returns: [ [ 'driverId', 'distance', [ 'lng', 'lat' ] ], ... ]
+      const nearbyFromRedis = await redis.georadius(
+        'driver_locations',
+        lng,
+        lat,
+        radiusMeters,
+        'm',
+        'WITHDIST',
+        'WITHCOORD',
+        'ASC'
+      ) as any[];
+
+      if (!nearbyFromRedis || nearbyFromRedis.length === 0) {
+        logger.info('No drivers found in Redis, falling back to PostGIS');
+        return await this.findNearbyDriversPostGIS(lng, lat, radiusMeters);
+      }
+
+      const driverIds = nearbyFromRedis.map((entry) => entry[0]);
+
+      // 2. Query Postgres to filter by availability and get driver details
+      const sqlQuery = `
+         SELECT
+          id,
+          first_name,
+          last_name,
+          full_name,
+          rating,
+          phone_number,
+          fcm_token,
+          availability
+      FROM drivers
+      WHERE id = ANY($1)
+        AND (availability->>'online')::boolean = true
+        AND (availability->>'status')::text IN ('ONLINE', 'HAS_UPCOMING_SCHEDULED')
+        AND status = 'active'
+      `;
+      const { rows } = await query(sqlQuery, [driverIds]);
+
+      // 3. Combine DB details with real-time Redis coordinates
+      const onlineDrivers = rows.map((dbDriver) => {
+        const redisData = nearbyFromRedis.find((entry) => entry[0] === dbDriver.id);
+        return {
+          ...dbDriver,
+          current_lng: redisData ? parseFloat(redisData[2][0]) : dbDriver.current_lng,
+          current_lat: redisData ? parseFloat(redisData[2][1]) : dbDriver.current_lat,
+          distance_meters: redisData ? Math.round(parseFloat(redisData[1])) : 0,
+        };
+      });
+
+      // 4. Sort by distance
+      onlineDrivers.sort((a, b) => a.distance_meters - b.distance_meters);
+
+      return onlineDrivers;
+    } catch (error) {
+      logger.error('Error finding nearby drivers via Redis, falling back to PostGIS:', error);
+      return await this.findNearbyDriversPostGIS(lng, lat, radiusMeters);
+    }
+  },
+
+  async findNearbyDriversPostGIS(lng: number, lat: number, radiusMeters: number) {
     const sqlQuery = `
        SELECT
         id,
@@ -583,16 +733,16 @@ export const DriverRepository = {
         current_lng,
         rating,
         phone_number,
+        fcm_token,
+        availability,
         ROUND(ST_Distance(location, ST_MakePoint($1, $2)::geography)::numeric, 0) as distance_meters
     FROM drivers
     WHERE (availability->>'online')::boolean = true
-      AND (availability->>'status')::text = 'ONLINE'
+      AND (availability->>'status')::text IN ('ONLINE', 'HAS_UPCOMING_SCHEDULED')
       AND status = 'active'
       AND ST_DWithin(location, ST_MakePoint($1, $2)::geography, $3)
-      -- AND last_active >= NOW() - INTERVAL '10 minutes'
     ORDER BY distance_meters ASC;
     `;
-    console.log(lng, lat, radiusMeters, "lng, lat, radiusMeters")
     const { rows } = await query(sqlQuery, [lng, lat, radiusMeters]);
     return rows;
   },
@@ -605,13 +755,12 @@ export const DriverRepository = {
                 current_lat = $1,
                 current_lng = $2,
                 location = ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
-                current_address = $3,
                 last_active = CURRENT_TIMESTAMP 
-            WHERE id = $4 AND is_deleted = FALSE
+            WHERE id = $3 AND is_deleted = FALSE
             RETURNING id, full_name;
         `;
 
-    const { rows } = await query(sqlQuery, [lat, lng, address, id]);
+    const { rows } = await query(sqlQuery, [lat, lng, id]);
     return rows[0];
   },
 

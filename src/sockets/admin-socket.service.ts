@@ -12,7 +12,7 @@ export function connectToAdminBackend(userIo: Server) {
 
     // socket.io-client handles http:// → ws:// upgrade automatically.
     // The /internal segment is the Socket.IO namespace, not an HTTP path.
-    adminSocket = ioClient(`${adminUrl}/internal`, {
+    adminSocket = ioClient(config.adminInternalSocketUrl, { // ✅ Admin backend should be on a DIFFERENT port
         transports: ['websocket'],
         auth: { token: process.env.INTERNAL_SERVICE_SECRET },
         reconnection: true,
@@ -21,10 +21,46 @@ export function connectToAdminBackend(userIo: Server) {
     });
 
     adminSocket.on('connect', () => {
-        logger.info(`✅ Connected to Admin Backend at ${adminUrl}`);
+        logger.info('✅ Connected to Admin Backend');
     });
 
-    // Listen for commands FROM admin backend and forward to users
+    // ✅ Listen for account status updates from admin
+    adminSocket.on('ACCOUNT_STATUS_UPDATE', (data) => {
+        logger.info('Received ACCOUNT_STATUS_UPDATE from admin:', data);
+        const { driverId, status, kyc_status, reason } = data;
+        if (driverId) {
+            userIo.to(`driver_${driverId}`).emit('ACCOUNT_STATUS_UPDATE', {
+                status,
+                kyc_status,
+                reason,
+                timestamp: new Date().toISOString()
+            });
+        }
+    });
+
+    // ✅ Listen for document status updates from admin
+    adminSocket.on('DOCUMENT_STATUS_UPDATE', async (data) => {
+        logger.info('Received DOCUMENT_STATUS_UPDATE from admin:', data);
+        const { driverId, documentId, status, reason } = data;
+        if (driverId) {
+            userIo.to(`driver_${driverId}`).emit('DOCUMENT_STATUS_UPDATE', {
+                documentId,
+                status,
+                reason,
+                timestamp: new Date().toISOString()
+            });
+
+            // Trigger Push Notification logic
+            try {
+                const { DriverDocumentsService } = require('../modules/drivers/driver-documents.service');
+                await DriverDocumentsService.syncKYCStatus(driverId);
+            } catch (err: any) {
+                logger.error(`Failed to trigger push notification for document update: ${err.message}`);
+            }
+        }
+    });
+
+    // ✅ Listen for commands FROM admin backend and forward to users
     adminSocket.on('broadcast_to_users', (data) => {
         logger.info('Admin sent broadcast:', data);
         userIo.emit('announcement', data);

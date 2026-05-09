@@ -142,7 +142,7 @@ export const UserService = {
     const token = await UserRepository.getFcmTokenById(userId);
 
     if (!token) {
-      console.log(`No notification sent: User ${userId} has no registered device.`);
+      logger.info(`No notification sent: User ${userId} has no registered device.`);
       return;
     }
 
@@ -154,9 +154,9 @@ export const UserService = {
 
     try {
       await admin.messaging().send(message);
-      console.log('✅ Push notification delivered');
+      logger.info('✅ Push notification delivered');
     } catch (error) {
-      console.error('❌ Firebase delivery failed:', error);
+      logger.error('❌ Firebase delivery failed:', error);
     }
   }
 };
