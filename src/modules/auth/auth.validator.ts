@@ -13,6 +13,7 @@ export const AuthValidation = {
     role: roleRule,
     device_id: deviceIdRule,
     allow_new_device: allowNewDeviceRule,
+    fcm_token: fcmTokenRule,
   }),
 
   verifyOtpValidation: Joi.object().keys({
@@ -29,4 +30,5 @@ export const AuthValidation = {
     refreshToken: refreshTokenRule,
     device_id: deviceIdRule,
   }),
+
 };

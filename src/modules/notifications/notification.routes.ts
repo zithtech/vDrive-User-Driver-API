@@ -1,6 +1,6 @@
-// src/modules/notifications/notification.routes.ts
 import { Router } from 'express';
 import { NotificationController } from './notification.controller';
+import isServiceAuthenticated from '../../shared/serviceAuthentication';
 
 const router = Router();
 
@@ -15,5 +15,8 @@ router.post('/subscribe-to-coupon', NotificationController.subscribeToCoupon);
 
 // POST /api/notifications/unsubscribe
 router.post('/unsubscribe', NotificationController.unsubscribeFromCoupon);
+
+// 🛡️ Internal Service Route (Used by Admin BE)
+router.post('/internal/send', isServiceAuthenticated, NotificationController.sendNotification);
 
 export default router;

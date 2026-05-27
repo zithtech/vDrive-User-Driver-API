@@ -571,7 +571,7 @@ export const TripRepository = {
       FROM trips t
       LEFT JOIN users u ON t.user_id = u.id
       WHERE t.driver_id = $1 
-      AND t.trip_status IN ('ASSIGNED', 'ACCEPTED', 'ARRIVING', 'ARRIVED', 'LIVE', 'DESTINATION_REACHED')
+      AND t.trip_status IN ('ASSIGNED', 'ACCEPTED', 'VERIFICATION_PENDING', 'ARRIVING', 'ARRIVED', 'LIVE', 'DESTINATION_REACHED')
       ORDER BY t.created_at DESC
       LIMIT 1;`,
       [driverId]

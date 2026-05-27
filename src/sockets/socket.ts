@@ -5,6 +5,7 @@ import { TripService } from '../modules/trip/trip.service';
 import { TripSocketEvent, TripEventPayload } from './socket.types';
 import { connectToAdminBackend } from '../sockets/admin-socket.service';
 import registerChatSocket from './chat.socket';
+import registerSupportSocket from './support.socket';
 
 let io: Server;
 
@@ -32,6 +33,7 @@ export const initSocket = (server: HttpServer): Server => {
 
         //chat-socket
         registerChatSocket(io, socket);
+        registerSupportSocket(io, socket);
     });
     connectToAdminBackend(io);
 

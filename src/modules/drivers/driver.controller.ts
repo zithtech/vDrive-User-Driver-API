@@ -337,12 +337,13 @@ export const DriverController = {
   async findNearbyDrivers(req: Request, res: Response) {
     try {
       const io = req.app.get('io');
-      const { lng, lat, newTrip } = req.body;
+      const { lng, lat, newTrip, radius } = req.body;
       const drivers = await DriverService.findNearbyDrivers(
         io,
         Number(lng),
         Number(lat),
-        newTrip
+        newTrip,
+        radius ? Number(radius) : 1000
       );
 
       return res.status(200).json({ success: true, data: drivers });

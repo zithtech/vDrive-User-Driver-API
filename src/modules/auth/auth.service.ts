@@ -110,11 +110,13 @@ export const AuthService = {
     role,
     device_id,
     allow_new_device,
+    fcm_token
   }: {
     phone_number: string;
     role: string;
     device_id: string;
     allow_new_device: boolean;
+    fcm_token: string;
   }): Promise<{ expiresIn: number, userexists: boolean, userData: any, otp: any  }> {
     
     const {
@@ -155,9 +157,21 @@ export const AuthService = {
         if (currentRequestCount > otpRequestLimit) {
           const blockUntil = new Date(now.getTime() + otpBlockDuration * 60 * 1000);
           await AuthRepository.blockUser(phone_number, role, blockUntil);
+          
+          // Notify user about being blocked
+          const targetFcmToken = fcm_token || (await AuthRepository.getUser(phone_number, role))?.fcm_token;
+          if (targetFcmToken) {
+            if (role === 'driver') {
+              await DriverNotifications.otpLimitExceeded(targetFcmToken, otpBlockDuration);
+            } else {
+              await UserNotifications.otpLimitExceeded(targetFcmToken, otpBlockDuration);
+            }
+          }
+
           throw {
             statusCode: 429,
             message: `OTP request limit exceeded. You are blocked for ${otpBlockDuration} minutes.`,
+            code: "TOO_MANY_REQUESTS"
           };
         }
       } else {
@@ -262,6 +276,7 @@ export const AuthService = {
         throw {
           statusCode: 429,
           message: `Account is temporarily locked due to too many failed attempts. Try again after ${remainingTime} minutes.`,
+          code:"TOO_MANY_ATTEMPTS"
         };
       }
 
@@ -285,6 +300,14 @@ export const AuthService = {
         if (attempt_count + 1 >= MaxAttempt) {
           const blockUntil = new Date(Date.now() + otpBlockDuration * 60 * 1000);
           await AuthRepository.blockUser(phone_number, role, blockUntil);
+          const targetFcmToken = fcm_token || (await AuthRepository.getUser(phone_number, role))?.fcm_token;
+          if (targetFcmToken) {
+            if (role === 'driver') {
+              await DriverNotifications.tooManyAttempts(targetFcmToken, otpBlockDuration);
+            } else {
+              await UserNotifications.tooManyAttempts(targetFcmToken, otpBlockDuration);
+            }
+          }
           throw {
             statusCode: 429,
             message: `Too many failed attempts. Account locked for ${otpBlockDuration} minutes.`,

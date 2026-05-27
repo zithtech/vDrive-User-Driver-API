@@ -32,6 +32,8 @@ export enum UserNotificationType {
     PAYMENT_SUCCESS = 'PAYMENT_SUCCESS',
     PAYMENT_FAILED = 'PAYMENT_FAILED',
     SOS_RESOLVED = 'SOS_RESOLVED',
+    OTP_LIMIT_EXCEEDED = 'OTP_LIMIT_EXCEEDED',
+    TOO_MANY_ATTEMPTS = 'TOO_MANY_ATTEMPTS',
 }
 
 // ─── Driver Notification Types ────────────────────────────────────────────────
@@ -54,6 +56,9 @@ export enum DriverNotificationType {
     SOS_RESOLVED = 'SOS_RESOLVED',
     TRIP_VERIFICATION_APPROVED = 'TRIP_VERIFICATION_APPROVED',
     TRIP_VERIFICATION_REJECTED = 'TRIP_VERIFICATION_REJECTED',
+    OTP_LIMIT_EXCEEDED = 'OTP_LIMIT_EXCEEDED',
+    TOO_MANY_ATTEMPTS = 'TOO_MANY_ATTEMPTS',
+
 }
 
 // ─── Admin Notification Types ─────────────────────────────────────────────────

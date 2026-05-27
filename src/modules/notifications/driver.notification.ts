@@ -157,4 +157,20 @@ export const DriverNotifications = {
             },
             androidChannelId: 'ride_requests',
         }),
+
+        otpLimitExceeded: (fcmToken: string, blockDuration: number) =>
+        sendToDevice(fcmToken, {
+            type: DriverNotificationType.OTP_LIMIT_EXCEEDED,
+            title: 'OTP Limit Exceeded',
+            body: `OTP request limit exceeded. You are blocked for ${blockDuration} minutes.`,
+            androidChannelId: 'ride_requests',
+        }),
+
+        tooManyAttempts: (fcmToken: string, blockDuration: number) =>
+        sendToDevice(fcmToken, {
+            type: DriverNotificationType.TOO_MANY_ATTEMPTS,
+            title: 'Too Many Attempts',
+            body: `Too many failed attempts. Account locked for ${blockDuration} minutes.`,
+            androidChannelId: 'ride_requests',
+        }),
 };

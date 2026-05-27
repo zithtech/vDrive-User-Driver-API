@@ -246,14 +246,26 @@ export const UserController = {
         const { userid } = req.params;
         const { documentType, contentType } = req.body;
         
-        const key = `user-profiles/${userid}/${documentType}_${Date.now()}`;
+        const key = `user-profiles/${userid}/${documentType}`;
         const result = await s3Service.getUploadUrl(key, contentType);
         
         return successResponse(res, 200, 'Upload URL generated successfully', result);
       } catch (error) {
         next(error);
       }
-    }
+    },
 
+    async deleteDocument(req: Request, res: Response, next: NextFunction) {
+      try {
+        const {userid} = req.params;
+        const {documentType} = req.body;
+        const key = `user-profiles/${userid}/${documentType}`;
+        const result = await s3Service.deleteFile(key as string);
+        return successResponse(res, 200, 'Document deleted successfully', result);
+      } catch (err: any) {
+        logger.error(`deleteDocument error: ${err.message}`);
+        next(err);
+      }
+    }
 
 };

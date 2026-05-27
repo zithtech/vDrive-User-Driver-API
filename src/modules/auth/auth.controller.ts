@@ -20,7 +20,7 @@ interface AuthRequest extends Request {
 
 export const AuthController = {
   async requestOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
-    const { phone_number, role, device_id, allow_new_device } = req.body;
+    const { phone_number, role, device_id, allow_new_device, fcm_token } = req.body;
 
     try {
       logger.info(`OTP request received for: ${phone_number || 'unknown'}`);
@@ -34,6 +34,7 @@ export const AuthController = {
         role,
         device_id,
         allow_new_device,
+        fcm_token,
       });
 
       logger.info(`OTP sent successfully to: ${phone_number}`);

@@ -66,6 +66,24 @@ export function connectToAdminBackend(userIo: Server) {
         userIo.emit('announcement', data);
     });
 
+    // ✅ Listen for Support Messages from Admin
+    adminSocket.on('SUPPORT_MESSAGE_FROM_ADMIN', (data) => {
+        logger.info('Received support message from admin for ticket:', data.ticketId);
+        const room = `support_ticket_${data.ticketId}`;
+        userIo.to(room).emit('receiveSupportMessage', {
+            ...data,
+            id: Date.now().toString(),
+            created_at: new Date().toISOString()
+        });
+    });
+
+    // ✅ Listen for Ticket Resolution (Switch back to AI)
+    adminSocket.on('TICKET_RESOLVED', (data) => {
+        logger.info('Ticket resolved, switching driver back to AI:', data.ticketId);
+        const room = `support_ticket_${data.ticketId}`;
+        userIo.to(room).emit('SWITCH_TO_AI', { ticketId: data.ticketId });
+    });
+
     adminSocket.on('disconnect', (reason) => {
         logger.warn(`Lost connection to Admin Backend: ${reason}`);
     });

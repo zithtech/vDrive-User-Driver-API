@@ -16,6 +16,7 @@ router.get('/details/:id', TripVerificationController.getVerificationDetails);
 router.get('/comparison/:driverId', TripVerificationController.getComparisonData);
 router.put('/verify/:id', TripVerificationController.verifyTrip);
 router.put('/verify-granular/:id', TripVerificationController.verifyTripGranular);
+router.get('/history/:id', TripVerificationController.getHistory);
 
 // TEST ONLY
 router.post('/test-verify/:driverId', TripVerificationController.testVerifyDriver);

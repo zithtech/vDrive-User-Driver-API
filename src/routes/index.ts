@@ -22,6 +22,7 @@ import sosRoutes from '../modules/sos/sos.routes';
 import referralRoutes from '../modules/referrals/referral.routes';
 import couponRoutes from '../modules/coupon-management/coupon.routes';
 import driverReferralRoutes from '../modules/driver-referrals/driver-referral.routes';
+import supportRoutes from '../modules/support/support.routes';
 import { logger } from '../shared/logger';
 
 const router = Router();
@@ -36,10 +37,12 @@ router.get('/media/proxy', async (req, res) => {
     const { url } = req.query;
     if (!url || typeof url !== 'string') return res.status(400).send('URL is required');
     
-    // Check if it's an S3 URL from our bucket
     if (url.includes('s3.eu-north-1.amazonaws.com')) {
-      const key = url.split('.amazonaws.com/')[1];
+      let key = url.split('.amazonaws.com/')[1];
       if (!key) return res.status(400).send('Invalid S3 URL');
+      
+      // Strip any query parameters
+      key = key.split('?')[0];
       
       const { s3Service } = require('../modules/s3/s3.service');
       const signedUrl = await s3Service.getReadUrl(decodeURIComponent(key));
@@ -68,6 +71,7 @@ router.use('/promos', promoRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/notification-management', notificationManagementRoutes);
 router.use('/sos', sosRoutes);
+router.use('/support', supportRoutes);
 
 router.use(isAuthenticated);
 router.use('/trips', tripRoutes);

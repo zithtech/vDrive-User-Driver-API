@@ -35,8 +35,8 @@ export const createNotificationRecord = async (req: Request, res: Response) => {
 
 export const updateNotificationRecord = async (req: Request, res: Response) => {
   try {
-    const id = req.params.id as string;
-    const result = await NotificationService.updateNotification(id, req.body);
+    const { id } = req.params;
+    const result = await NotificationService.updateNotification(id as string, req.body);
     res.status(200).json({ success: true, data: result });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -45,8 +45,8 @@ export const updateNotificationRecord = async (req: Request, res: Response) => {
 
 export const deleteNotificationRecord = async (req: Request, res: Response) => {
   try {
-    const id = req.params.id as string;
-    await NotificationService.deleteNotification(id);
+    const { id } = req.params;
+    await NotificationService.deleteNotification(id as string);
     res.status(200).json({ success: true, message: 'Notification deleted' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });

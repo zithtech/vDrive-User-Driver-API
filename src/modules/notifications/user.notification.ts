@@ -132,4 +132,20 @@ export const UserNotifications = {
             data: { sosId },
             androidChannelId: 'default',
         }),
+
+    otpLimitExceeded: (fcmToken: string, blockDuration: number) =>
+        sendToDevice(fcmToken, {
+            type: UserNotificationType.OTP_LIMIT_EXCEEDED,
+            title: 'OTP Limit Exceeded',
+            body: `OTP request limit exceeded. You are blocked for ${blockDuration} minutes.`,
+            androidChannelId: 'default',
+        }),
+
+    tooManyAttempts: (fcmToken: string, blockDuration: number) =>
+        sendToDevice(fcmToken, {
+            type: UserNotificationType.TOO_MANY_ATTEMPTS,
+            title: 'Too Many Attempts',
+            body: `Too many failed attempts. Account locked for ${blockDuration} minutes.`,
+            androidChannelId: 'default',
+        }),
 };

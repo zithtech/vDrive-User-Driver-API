@@ -3,7 +3,7 @@ import { logger } from '../../shared/logger';
 import { Driver, CreateDriverInput, UpdateDriverInput, Document, KYC, Credit, Availability, Performance, Payments } from './driver.model';
 import { DriverReferralRepository } from '../driver-referrals/driver-referral.repository';
 import { DriverOnboardingStatus } from '../../enums/user.enums';
-import { s3Service } from '../s3/s3.service';
+
 
 export const DriverRepository = {
   async findDriverById(id: string): Promise<Driver | null> {
@@ -28,14 +28,15 @@ export const DriverRepository = {
       // Insert driver
       const driverResult = await client.query(
         `INSERT INTO drivers (
-          first_name, last_name, phone_number, email, profile_pic_url, date_of_birth, gender, 
+          first_name, last_name, phone_number, alternate_contact, email, profile_pic_url, date_of_birth, gender, 
           address, role, status, kyc, onboarding_status, documents_submitted, credit, performance, payments, is_trip_verified, language, device_id, is_vibration_enabled, total_earnings, referral_code, referred_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
         RETURNING *`,
         [
           driverData.first_name,
           driverData.last_name,
           driverData.phone_number,
+          driverData.alternate_contact || null,
           driverData.email,
           driverData.profilePicUrl || null,
           driverData.date_of_birth,
@@ -144,6 +145,10 @@ export const DriverRepository = {
       if (driverData.phone_number) {
         driverFields.push(`phone_number = $${paramCount++}`);
         driverValues.push(driverData.phone_number);
+      }
+      if (driverData.alternate_contact !== undefined) {
+        driverFields.push(`alternate_contact = $${paramCount++}`);
+        driverValues.push(driverData.alternate_contact);
       }
       if (driverData.email) {
         driverFields.push(`email = $${paramCount++}`);
@@ -491,42 +496,18 @@ export const DriverRepository = {
       }
     };
 
-    // 🛡️ S3 URL Signing Helper
-    const signUrl = async (img: any) => {
-      if (!img) return undefined;
-      const parsed = safeParse(img);
-      
-      const signSingle = async (url: any) => {
-        if (!url || typeof url !== 'string' || !url.includes('amazonaws.com')) return url;
-        try {
-          const urlObj = new URL(url);
-          const key = urlObj.pathname.startsWith('/') ? urlObj.pathname.substring(1) : urlObj.pathname;
-          return await s3Service.getReadUrl(key);
-        } catch (e) {
-          return url;
-        }
-      };
-
-      if (typeof parsed === 'object') {
-        const result: any = {};
-        if (parsed.url) result.url = await signSingle(parsed.url);
-        if (parsed.front) result.front = await signSingle(parsed.front);
-        if (parsed.back) result.back = await signSingle(parsed.back);
-        return Object.keys(result).length > 0 ? result : parsed;
-      }
-      return await signSingle(parsed);
-    };
 
     const fName = driver.first_name || '';
     const lName = driver.last_name || '';
 
-    const profileUrl = await (async () => {
+    // Resolve profile picture URL (return raw S3 URL — frontend proxy handles signing)
+    const profileUrl = (() => {
       const primary = safeParse(driver.profile_pic_url);
       if (primary) {
         const url = typeof primary === 'object' ? primary.url || primary.front || undefined : primary;
         if (url) {
           logger.info(`[mapToDriver] Resolved image from primary field for driver ${driver.id}`);
-          return await signUrl(url);
+          return url;
         }
       }
       const selfie = documents.find(d => 
@@ -540,7 +521,7 @@ export const DriverRepository = {
       if (url) {
         logger.info(`[mapToDriver] Resolved image from selfie document for driver ${driver.id}`);
       }
-      return await signUrl(url);
+      return url;
     })();
 
     return {
@@ -549,6 +530,7 @@ export const DriverRepository = {
       last_name: lName,
       full_name: driver.full_name,
       phone_number: driver.phone_number,
+      alternate_contact: driver.alternate_contact || undefined,
       email: driver.email,
       profilePicUrl: profileUrl,
       profile_picture: profileUrl,
@@ -616,17 +598,17 @@ export const DriverRepository = {
       current_lat: driver.current_lat,
       current_lng: driver.current_lng,
       current_heading: driver.current_heading,
-      documents: await Promise.all(documents.map(async (doc) => ({
+      documents: documents.map((doc) => ({
         documentId: doc.id,
         documentType: doc.document_type,
         documentNumber: doc.document_number,
-        documentUrl: await signUrl(doc.document_url),
+        documentUrl: safeParse(doc.document_url),
         status: doc.status || 'pending',
         licenseStatus: doc.status || 'pending',
         expiryDate: doc.expiry_date,
         remarks: doc.remarks,
         verifiedAt: doc.verified_at,
-      }))),
+      })),
     };
   },
 

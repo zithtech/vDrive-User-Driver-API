@@ -174,4 +174,17 @@ export class TripVerificationController {
             next(error);
         }
     }
+
+    /**
+     * Get verification history for a specific verification ID
+     */
+    static async getHistory(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+            const history = await TripVerificationService.getVerificationHistory(id as string);
+            return successResponse(res, 200, 'Verification history fetched', history);
+        } catch (error) {
+            next(error);
+        }
+    }
 }

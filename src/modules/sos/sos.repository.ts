@@ -56,6 +56,13 @@ export class SosRepository {
   }
 
   static async addTrustedContact(user_id: string, user_type: 'driver' | 'customer', name: string, phone: string, relationship?: string): Promise<TrustedContact> {
+    const existingContactsCount = await query(
+      'SELECT COUNT(*) FROM trusted_contacts WHERE user_id = $1 AND user_type = $2',
+      [user_id, user_type]
+    );
+    if (parseInt(existingContactsCount.rows[0].count) >= 5) {
+      throw new Error('Maximum number of trusted contacts reached');
+    }
     const result = await query(
       'INSERT INTO trusted_contacts (user_id, user_type, name, phone, relationship) VALUES ($1, $2, $3, $4, $5) RETURNING *',
       [user_id, user_type, name, phone, relationship || null]

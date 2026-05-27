@@ -33,6 +33,7 @@ export const createDriverValidator = celebrate({
     first_name: Joi.string().required(),
     last_name: Joi.string().required(),
     phone_number: Joi.string().required(),
+    alternate_contact: Joi.string().allow(null, '').optional(),
     email: Joi.string().email().required(),
     profilePicUrl: Joi.string().uri().optional(),
     date_of_birth: Joi.string().isoDate().required(),
@@ -70,8 +71,8 @@ export const findNearbyDriversValidator = celebrate({
 
     newTrip: Joi.array().items(TripValidation.createTripValidation.unknown(true)).min(1).required(),
     // Radius: optional, defaults to 5km (5000 meters)
-    // radius: Joi.number().min(100).max(50000).default(5000)
-    //   .messages({ 'number.max': 'Search radius cannot exceed 50km' }).optional(),
+    radius: Joi.number().min(100).max(50000).default(5000)
+    .messages({ 'number.max': 'Search radius cannot exceed 50km' }).optional(),
   }),
 });
 
@@ -93,6 +94,7 @@ export const updateDriverValidator = celebrate({
     first_name: Joi.string().optional(),
     last_name: Joi.string().optional(),
     phone_number: Joi.string().optional(),
+    alternate_contact: Joi.string().allow(null, '').optional(),
     email: Joi.string().email().optional(),
     profilePicUrl: Joi.string().uri().optional(),
     date_of_birth: Joi.string().isoDate().optional(),

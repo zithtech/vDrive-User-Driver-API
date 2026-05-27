@@ -138,10 +138,10 @@ export const emergencyContactObject = Joi.object({
 
 export const emergencyContactSchema = Joi.array()
   .items(emergencyContactObject)
-  .max(3)
+  .max(5)
   .optional()
   .messages({
-    'array.max': 'You can only have up to 3 Emergency Contacts',
+    'array.max': 'You can only have up to 5 Emergency Contacts',
     'array.base': 'emergency_contacts must be an array',
   });
 
@@ -159,7 +159,7 @@ export const settingsPreferenceSchema = Joi.object({
     'any.required': 'All permission toggles are required for a full update'
   });
 
-export const ProfileUrl = Joi.string().messages({
+export const ProfileUrl = Joi.string().optional().allow(null, '').messages({
   'string.base': 'ProfileUrl must be a string',
   'string.empty': 'ProfileUrl cannot be empty',
 });

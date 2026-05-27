@@ -1,5 +1,6 @@
 import { TripVerificationRepository } from './trip-verification.repository';
 import { TripVerification, TripVerificationStatus, ImageVerificationStatus, CreateTripVerificationInput } from './trip-verification.model';
+import { TripVerificationHistoryRepository } from './trip-verification-history.repository';
 import { DriverRepository } from './driver.repository';
 import { logger } from '../../shared/logger';
 import { DriverDocumentsRepository } from './driver-documents.repository';
@@ -44,6 +45,18 @@ export class TripVerificationService {
 
         // 2. Create the verification record
         const verification = await TripVerificationRepository.upsert(data);
+
+        // 2b. Log the initial submission event
+        await TripVerificationHistoryRepository.logEvent({
+            verification_id: verification.id,
+            driver_id: verification.driver_id,
+            trip_id: verification.trip_id,
+            selfie_url: verification.selfie_url,
+            car_image_url: verification.car_image_url,
+            car_images: verification.car_images,
+            status: 'submitted',
+            event_type: 'initial_submission'
+        });
 
         // 3. Update trip status to VERIFICATION_PENDING
         if (data.trip_id) {
@@ -94,6 +107,17 @@ export class TripVerificationService {
         const verification = await TripVerificationRepository.reuploadImages(verificationId, data);
 
         if (verification) {
+            // Log the reupload event
+            await TripVerificationHistoryRepository.logEvent({
+                verification_id: verification.id,
+                driver_id: verification.driver_id,
+                trip_id: verification.trip_id,
+                selfie_url: verification.selfie_url,
+                car_image_url: verification.car_image_url,
+                car_images: verification.car_images,
+                status: 'submitted',
+                event_type: 'reupload'
+            });
             // Update trip back to VERIFICATION_PENDING
             if (verification.trip_id) {
                 try {
@@ -179,6 +203,24 @@ export class TripVerificationService {
             logger.error(`Trip verification ${id} not found`);
             return null;
         }
+
+        // Log the admin review event
+        await TripVerificationHistoryRepository.logEvent({
+            verification_id: verification.id,
+            driver_id: verification.driver_id,
+            trip_id: verification.trip_id,
+            selfie_url: verification.selfie_url,
+            car_image_url: verification.car_image_url,
+            car_images: verification.car_images,
+            status: verification.status,
+            selfie_status: verification.selfie_status,
+            car_image_status: verification.car_image_status,
+            event_type: 'admin_review',
+            admin_id: data.admin_id,
+            remarks: verification.remarks,
+            selfie_remarks: data.selfie_remarks,
+            car_image_remarks: data.car_image_remarks
+        });
 
         const { emitToRoom } = require('../../sockets/socket');
 
@@ -365,5 +407,30 @@ export class TripVerificationService {
         if (latest && latest.status === 'pending') {
             await TripVerificationRepository.updateStatus(latest.id, 'approved', 'Auto-approved for testing');
         }
+    }
+
+    /**
+     * Get history of all verification events for a specific verification ID
+     */
+    static async getVerificationHistory(verificationId: string) {
+        const history = await TripVerificationHistoryRepository.getByVerificationId(verificationId);
+        // Sign URLs in history for display
+        return await Promise.all(history.map(async (h) => {
+            const signSingle = async (url: string | null | undefined) => {
+                if (!url || !url.includes('amazonaws.com')) return url;
+                try {
+                    const urlObj = new URL(url);
+                    const key = urlObj.pathname.startsWith('/') ? urlObj.pathname.substring(1) : urlObj.pathname;
+                    return await s3Service.getReadUrl(key);
+                } catch (e) { return url; }
+            };
+
+            return {
+                ...h,
+                selfie_url: await signSingle(h.selfie_url) || '',
+                car_image_url: (await signSingle(h.car_image_url)) || '',
+                car_images: h.car_images ? await Promise.all(h.car_images.map(url => signSingle(url))) : undefined
+            };
+        }));
     }
 }
