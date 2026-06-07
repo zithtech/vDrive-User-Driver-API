@@ -150,4 +150,89 @@ export class SupportController {
       next(error);
     }
   }
+
+  /* ======================== USER TICKETS ======================== */
+
+  /** POST /support/tickets/user — User creates a support ticket */
+  static async createUserTicket(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { user_id, subject, description, priority, category } = req.body;
+      const ticket = await SupportService.createUserTicket({ user_id, subject, description, priority, category });
+      return successResponse(res, 201, 'User support ticket created successfully', ticket);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** GET /support/tickets/user/my-tickets/:userId — User fetches their tickets */
+  static async getUserTickets(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { userId } = req.params;
+      const tickets = await SupportService.getUserTickets(userId as string);
+      return successResponse(res, 200, 'User tickets fetched successfully', tickets);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** GET /support/tickets/user/all — Admin fetches all user tickets (with pagination) */
+  static async getAllUserTickets(req: Request, res: Response, next: NextFunction) {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = (page - 1) * limit;
+      const status = req.query.status as string | undefined;
+
+      const result = await SupportService.getAllUserTickets(limit, offset, status);
+      return res.status(200).json({
+        success: true,
+        data: {
+          tickets: result.tickets,
+          pagination: { page, limit, total: result.total },
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** GET /support/tickets/user/:id — Get single user ticket */
+  static async getUserTicketById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const ticket = await SupportService.getUserTicketById(id as string);
+      if (!ticket) {
+        return res.status(404).json({ success: false, message: 'User ticket not found' });
+      }
+      return successResponse(res, 200, 'User ticket fetched successfully', ticket);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** PATCH /support/tickets/user/:id/status — Admin updates user ticket status */
+  static async updateUserTicketStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { status, admin_notes } = req.body;
+      const ticket = await SupportService.updateUserTicketStatus(id as string, status, admin_notes);
+      if (!ticket) {
+        return res.status(404).json({ success: false, message: 'User ticket not found' });
+      }
+      return successResponse(res, 200, 'User ticket status updated', ticket);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** GET /support/tickets/user/:id/messages — Get all messages for a user ticket */
+  static async getUserTicketMessages(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const messages = await SupportService.getUserTicketMessages(id as string);
+      return successResponse(res, 200, 'User messages fetched successfully', messages);
+    } catch (error) {
+      next(error);
+    }
+  }
 }

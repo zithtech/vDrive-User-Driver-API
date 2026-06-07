@@ -14,12 +14,12 @@ export default function registerSupportSocket(io: Server, socket: Socket) {
 
         try {
             // Fetch message history for this ticket
-            const { rows } = await query(
-                `SELECT * FROM support_messages 
-                 WHERE ticket_id = $1 
-                 ORDER BY created_at ASC`,
-                [ticketId]
-            );
+            let rows;
+            if (userType === 'user' || userType === 'customer') {
+                rows = await SupportService.getUserTicketMessages(ticketId);
+            } else {
+                rows = await SupportService.getTicketMessages(ticketId);
+            }
 
             socket.emit("supportChatHistory", rows);
         } catch (err) {
@@ -29,26 +29,38 @@ export default function registerSupportSocket(io: Server, socket: Socket) {
     });
 
     // Send a message in support ticket
-    socket.on("sendSupportMessage", async (data: { ticketId: string; senderId: string; senderType: 'driver' | 'admin'; message: string }) => {
+    socket.on("sendSupportMessage", async (data: { ticketId: string; senderId: string; senderType: 'driver' | 'admin' | 'user' | 'customer'; message: string }) => {
         const room = `support_ticket_${data.ticketId}`;
         
         try {
-            const { rows } = await query(
-                `INSERT INTO support_messages (ticket_id, sender_id, sender_type, message)
-                 VALUES ($1, $2, $3, $4)
-                 RETURNING *`,
-                [data.ticketId, data.senderId, data.senderType, data.message]
-            );
-
-            const newMessage = rows[0];
+            let newMessage;
+            if (data.senderType === 'user' || data.senderType === 'customer') {
+                newMessage = await SupportService.saveUserMessage({
+                    ticket_id: data.ticketId,
+                    sender_id: data.senderId,
+                    sender_type: 'user', // Force to 'user' for DB enum consistency
+                    message: data.message
+                });
+            } else {
+                newMessage = await SupportService.saveMessage({
+                    ticket_id: data.ticketId,
+                    sender_id: data.senderId,
+                    sender_type: data.senderType,
+                    message: data.message
+                });
+            }
 
             // Broadcast to the room
             io.to(room).emit("receiveSupportMessage", newMessage);
             
-            // If sender is driver, maybe notify all admins?
+            // If sender is driver or user, notify admin via internal socket
             if (data.senderType === 'driver') {
-                // Also forward to Admin Backend via internal socket
                 notifyAdmin('SUPPORT_MESSAGE_FROM_DRIVER', {
+                    ...newMessage,
+                    ticketId: data.ticketId
+                });
+            } else if (data.senderType === 'user' || data.senderType === 'customer') {
+                notifyAdmin('SUPPORT_MESSAGE_FROM_USER', {
                     ...newMessage,
                     ticketId: data.ticketId
                 });
@@ -59,31 +71,48 @@ export default function registerSupportSocket(io: Server, socket: Socket) {
         }
     });
 
-    // Driver cuts the chat (ends support session)
-    socket.on("endSupportChat", async ({ ticketId, driverId }) => {
+    // Driver or User cuts the chat (ends support session)
+    socket.on("endSupportChat", async ({ ticketId, driverId, userId, userType }) => {
         const room = `support_ticket_${ticketId}`;
-        logger.info(`🔴 Driver ${driverId} ended support session for ticket ${ticketId}`);
+        const enderId = driverId || userId;
+        logger.info(`🔴 ${userType || 'Driver'} ${enderId} ended support session for ticket ${ticketId}`);
 
         try {
-            // Auto farewell system message
-            const { rows } = await query(
-                `INSERT INTO support_messages (ticket_id, sender_id, sender_type, message)
-                 VALUES ($1, $2, $3, $4)
-                 RETURNING *`,
-                [ticketId, '00000000-0000-0000-0000-000000000000', 'system', 'Support session ended by Driver. Thank you for contacting VDrive Support!']
-            );
+            let newMessage;
+            // Auto farewell system message and status updates
+            if (userType === 'user' || userType === 'customer') {
+                newMessage = await SupportService.saveUserMessage({
+                    ticket_id: ticketId,
+                    sender_id: '00000000-0000-0000-0000-000000000000',
+                    sender_type: 'system',
+                    message: 'Support session ended by User. Thank you for contacting VDrive Support!'
+                });
+                
+                // 1. Update user ticket status to closed
+                await SupportService.updateUserTicketStatus(ticketId, 'closed' as any, 'User ended the chat session');
+
+                // 2. Notify Admin Backend to sync
+                notifyAdmin('USER_SUPPORT_TICKET_CLOSED', { ticketId, userId: enderId });
+            } else {
+                newMessage = await SupportService.saveMessage({
+                    ticket_id: ticketId,
+                    sender_id: '00000000-0000-0000-0000-000000000000',
+                    sender_type: 'system',
+                    message: 'Support session ended by Driver. Thank you for contacting VDrive Support!'
+                });
+                
+                // 1. Update driver ticket status to closed
+                await SupportService.updateTicketStatus(ticketId, 'closed' as any, 'Driver ended the chat session');
+
+                // 2. Notify Admin Backend to sync
+                notifyAdmin('SUPPORT_TICKET_CLOSED', { ticketId, driverId: enderId });
+            }
             
             // Broadcast the auto farewell message so admin sees it instantly
-            io.to(room).emit("receiveSupportMessage", rows[0]);
+            io.to(room).emit("receiveSupportMessage", newMessage);
 
-            // 1. Update ticket status to closed
-            await SupportService.updateTicketStatus(ticketId, 'closed' as any, 'Driver ended the chat session');
-
-            // 2. Notify the room (so Admin knows it's closed)
+            // Notify the room (so Admin knows it's closed)
             io.to(room).emit("TICKET_STATUS_UPDATE", { ticketId, status: 'closed' });
-
-            // 3. Notify Admin Backend to sync
-            notifyAdmin('SUPPORT_TICKET_CLOSED', { ticketId, driverId });
 
         } catch (err) {
             logger.error(`Failed to end support chat: ${err}`);

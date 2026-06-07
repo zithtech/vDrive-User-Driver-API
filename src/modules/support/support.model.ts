@@ -27,6 +27,30 @@ export interface SupportTicket {
   updated_at: Date;
 }
 
+export interface UserSupportTicket {
+  id: string;
+  user_id: string;
+  subject: string;
+  description: string;
+  category: string;
+  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  priority: 'low' | 'medium' | 'high';
+  admin_notes?: string;
+  resolved_at?: Date;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface UserSupportMessage {
+  id: string;
+  ticket_id: string;
+  sender_id: string;
+  sender_type: 'user' | 'admin';
+  message: string;
+  is_read: boolean;
+  created_at: Date;
+}
+
 export enum TicketStatus {
   OPEN = 'open',
   IN_PROGRESS = 'in_progress',
