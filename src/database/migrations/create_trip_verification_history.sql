@@ -1,4 +1,4 @@
--- Migration: Create trip_verification_history table
+d-- Migration: Create trip_verification_history table
 -- Purpose: Persist all verification events (submissions, re-uploads, admin reviews)
 --          so that photos and decisions are auditable in the admin history panel.
 
