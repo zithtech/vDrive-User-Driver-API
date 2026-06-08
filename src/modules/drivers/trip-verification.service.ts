@@ -47,16 +47,20 @@ export class TripVerificationService {
         const verification = await TripVerificationRepository.upsert(data);
 
         // 2b. Log the initial submission event
-        await TripVerificationHistoryRepository.logEvent({
-            verification_id: verification.id,
-            driver_id: verification.driver_id,
-            trip_id: verification.trip_id,
-            selfie_url: verification.selfie_url,
-            car_image_url: verification.car_image_url,
-            car_images: verification.car_images,
-            status: 'submitted',
-            event_type: 'initial_submission'
-        });
+        try {
+            await TripVerificationHistoryRepository.logEvent({
+                verification_id: verification.id,
+                driver_id: verification.driver_id,
+                trip_id: verification.trip_id,
+                selfie_url: verification.selfie_url,
+                car_image_url: verification.car_image_url,
+                car_images: verification.car_images,
+                status: 'submitted',
+                event_type: 'initial_submission'
+            });
+        } catch (historyErr: any) {
+            logger.error(`Failed to log initial submission history: ${historyErr.message}`);
+        }
 
         // 3. Update trip status to VERIFICATION_PENDING
         if (data.trip_id) {
@@ -108,16 +112,20 @@ export class TripVerificationService {
 
         if (verification) {
             // Log the reupload event
-            await TripVerificationHistoryRepository.logEvent({
-                verification_id: verification.id,
-                driver_id: verification.driver_id,
-                trip_id: verification.trip_id,
-                selfie_url: verification.selfie_url,
-                car_image_url: verification.car_image_url,
-                car_images: verification.car_images,
-                status: 'submitted',
-                event_type: 'reupload'
-            });
+            try {
+                await TripVerificationHistoryRepository.logEvent({
+                    verification_id: verification.id,
+                    driver_id: verification.driver_id,
+                    trip_id: verification.trip_id,
+                    selfie_url: verification.selfie_url,
+                    car_image_url: verification.car_image_url,
+                    car_images: verification.car_images,
+                    status: 'submitted',
+                    event_type: 'reupload'
+                });
+            } catch (historyErr: any) {
+                logger.error(`Failed to log reupload history: ${historyErr.message}`);
+            }
             // Update trip back to VERIFICATION_PENDING
             if (verification.trip_id) {
                 try {
@@ -205,22 +213,26 @@ export class TripVerificationService {
         }
 
         // Log the admin review event
-        await TripVerificationHistoryRepository.logEvent({
-            verification_id: verification.id,
-            driver_id: verification.driver_id,
-            trip_id: verification.trip_id,
-            selfie_url: verification.selfie_url,
-            car_image_url: verification.car_image_url,
-            car_images: verification.car_images,
-            status: verification.status,
-            selfie_status: verification.selfie_status,
-            car_image_status: verification.car_image_status,
-            event_type: 'admin_review',
-            admin_id: data.admin_id,
-            remarks: verification.remarks,
-            selfie_remarks: data.selfie_remarks,
-            car_image_remarks: data.car_image_remarks
-        });
+        try {
+            await TripVerificationHistoryRepository.logEvent({
+                verification_id: verification.id,
+                driver_id: verification.driver_id,
+                trip_id: verification.trip_id,
+                selfie_url: verification.selfie_url,
+                car_image_url: verification.car_image_url,
+                car_images: verification.car_images,
+                status: verification.status,
+                selfie_status: verification.selfie_status,
+                car_image_status: verification.car_image_status,
+                event_type: 'admin_review',
+                admin_id: data.admin_id,
+                remarks: verification.remarks,
+                selfie_remarks: data.selfie_remarks,
+                car_image_remarks: data.car_image_remarks
+            });
+        } catch (historyErr: any) {
+            logger.error(`Failed to log admin review history: ${historyErr.message}`);
+        }
 
         const { emitToRoom } = require('../../sockets/socket');
 
