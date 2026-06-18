@@ -67,7 +67,7 @@
     "dev": "ts-node-dev --respawn --transpile-only --ignore-watch logs,app.log src/server.ts",
     "migrate": "node-pg-migrate",
     "build": "tsc",
-    "start": "tsc && node dist/server.js",
+    "start": "node dist/server.js",
     "setup": "npm install && npm run build",
     "migrate:up": "npm run migrate",
     "migrate:up:N": "npx ts-node ./node_modules/.bin/node-pg-migrate up $N --migrations-table custom_migrations --schema public --verbose --single-transaction",

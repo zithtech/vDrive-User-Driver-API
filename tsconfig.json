@@ -7,7 +7,9 @@
     "strict": true,
     "typeRoots": ["./types", "./node_modules/@types"],
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo"
   },
   "include": ["src/**/*", "types/**/*"],
   "exclude": ["node_modules", "dist"]
