@@ -254,6 +254,25 @@ export const AuthRepository = {
     return true;
   },
 
+  // Invalidate any other users who might be logged into this same device
+  async invalidateOtherUsersOnDevice(device_id: string, exclude_user_id: string, role: string) {
+    const table = this.getSessionTable(role);
+    await query(
+      `UPDATE ${table}
+       SET is_active = FALSE,
+           refresh_token = NULL,
+           force_logout = TRUE,
+           fcm_token = NULL
+       WHERE device_id = $1 AND user_id != $2`,
+      [device_id, exclude_user_id]
+    );
+    const userTable = role === 'driver' ? 'drivers' : 'users';
+    await query(
+      `UPDATE ${userTable} SET device_id = NULL WHERE device_id = $1 AND id != $2`,
+      [device_id, exclude_user_id]
+    );
+  },
+
   // Also add getSessionByDevice to AuthRepository
   async getSessionByDevice(user_id: string, role: string, device_id: string) {
     const table = this.getSessionTable(role);

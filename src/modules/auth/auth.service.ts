@@ -437,12 +437,17 @@ export const AuthService = {
       const accessToken = tokens.accessToken;
       const refreshToken = tokens.refreshToken;
 
-      // ✅ Always save session — regardless of allow_new_device
-      await AuthRepository.upsertSession(userId, device_id, role, refreshToken, fcm_token);
-
       // ✅ Always update device_id in users table
       await AuthRepository.userDeviceIDUpdate(userId, device_id, role, fcm_token);
       logger.info(`Device ID "${device_id}" updated for User ID "${userId}"`);
+
+      // ✅ Invalidate old sessions for this device tied to OTHER users
+      if (device_id) {
+        await AuthRepository.invalidateOtherUsersOnDevice(device_id, userId, role);
+      }
+
+      // ✅ Always save session — regardless of allow_new_device
+      await AuthRepository.upsertSession(userId, device_id, role, refreshToken, fcm_token);
 
       return {
         verified: true,
