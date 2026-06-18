@@ -110,13 +110,13 @@ export const AuthService = {
     role,
     device_id,
     allow_new_device,
-    fcm_token
+    fcm_token,
   }: {
     phone_number: string;
     role: string;
     device_id: string;
     allow_new_device: boolean;
-    fcm_token: string;
+    fcm_token?: string;
   }): Promise<{ expiresIn: number, userexists: boolean, userData: any, otp: any  }> {
     
     const {
@@ -157,7 +157,6 @@ export const AuthService = {
         if (currentRequestCount > otpRequestLimit) {
           const blockUntil = new Date(now.getTime() + otpBlockDuration * 60 * 1000);
           await AuthRepository.blockUser(phone_number, role, blockUntil);
-          
           // Notify user about being blocked
           const targetFcmToken = fcm_token || (await AuthRepository.getUser(phone_number, role))?.fcm_token;
           if (targetFcmToken) {
@@ -300,6 +299,8 @@ export const AuthService = {
         if (attempt_count + 1 >= MaxAttempt) {
           const blockUntil = new Date(Date.now() + otpBlockDuration * 60 * 1000);
           await AuthRepository.blockUser(phone_number, role, blockUntil);
+
+          // Notify user about being blocked
           const targetFcmToken = fcm_token || (await AuthRepository.getUser(phone_number, role))?.fcm_token;
           if (targetFcmToken) {
             if (role === 'driver') {
