@@ -93,7 +93,7 @@ export const SupportRepository = {
 
   async findAllTickets(limit: number = 50, offset: number = 0, status?: string): Promise<{ tickets: SupportTicket[]; total: number }> {
     let countSql = `SELECT COUNT(*) FROM support_tickets`;
-    let dataSql = `SELECT st.*, d.full_name as driver_name, d.phone as driver_phone FROM support_tickets st LEFT JOIN drivers d ON d.id = st.driver_id`;
+    let dataSql = `SELECT st.*, d.full_name as driver_name, d.phone_number as driver_phone FROM support_tickets st LEFT JOIN drivers d ON d.id = st.driver_id`;
     const params: any[] = [];
     let idx = 1;
 
@@ -122,7 +122,7 @@ export const SupportRepository = {
 
   async findTicketById(id: string): Promise<SupportTicket | null> {
     const sql = `
-      SELECT st.*, d.full_name as driver_name, d.phone as driver_phone
+      SELECT st.*, d.full_name as driver_name, d.phone_number as driver_phone
       FROM support_tickets st
       LEFT JOIN drivers d ON d.id = st.driver_id
       WHERE st.id = $1
@@ -158,6 +158,101 @@ export const SupportRepository = {
   async findMessagesByTicketId(ticketId: string): Promise<any[]> {
     const sql = `
       SELECT * FROM support_messages
+      WHERE ticket_id = $1
+      ORDER BY created_at ASC
+    `;
+    const result = await query(sql, [ticketId]);
+    return result.rows;
+  },
+
+  /* ======================== USER TICKETS ======================== */
+
+  async createUserTicket(data: { user_id: string; subject: string; description: string; priority?: string; category?: string }): Promise<any> {
+    const sql = `
+      INSERT INTO user_support_tickets (user_id, subject, description, priority, category)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `;
+    const result = await query(sql, [data.user_id, data.subject, data.description, data.priority || 'medium', data.category || 'general']);
+    return result.rows[0];
+  },
+
+  async findTicketsByUserId(userId: string): Promise<any[]> {
+    const sql = `
+      SELECT * FROM user_support_tickets
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+    `;
+    const result = await query(sql, [userId]);
+    return result.rows;
+  },
+
+  async findAllUserTickets(limit: number = 50, offset: number = 0, status?: string): Promise<{ tickets: any[]; total: number }> {
+    let countSql = `SELECT COUNT(*) FROM user_support_tickets`;
+    let dataSql = `SELECT st.*, u.full_name as user_name, u.phone_number as user_phone FROM user_support_tickets st LEFT JOIN users u ON u.id = st.user_id`;
+    const params: any[] = [];
+    let idx = 1;
+
+    if (status) {
+      const whereClause = ` WHERE st.status = $${idx++}`;
+      countSql += ` WHERE status = $1`;
+      dataSql += whereClause;
+      params.push(status);
+    }
+
+    dataSql += ` ORDER BY st.created_at DESC LIMIT $${idx++} OFFSET $${idx++}`;
+    
+    const countParams = status ? [status] : [];
+    const dataParams = [...params, limit, offset];
+
+    const [countResult, dataResult] = await Promise.all([
+      query(countSql, countParams),
+      query(dataSql, dataParams),
+    ]);
+
+    return {
+      tickets: dataResult.rows,
+      total: parseInt(countResult.rows[0].count, 10),
+    };
+  },
+
+  async findUserTicketById(id: string): Promise<any | null> {
+    const sql = `
+      SELECT st.*, u.full_name as user_name, u.phone_number as user_phone
+      FROM user_support_tickets st
+      LEFT JOIN users u ON u.id = st.user_id
+      WHERE st.id = $1
+    `;
+    const result = await query(sql, [id]);
+    return result.rows[0] || null;
+  },
+
+  async updateUserTicketStatus(id: string, status: TicketStatus, adminNotes?: string): Promise<any | null> {
+    const sql = `
+      UPDATE user_support_tickets
+      SET status = $2, admin_notes = COALESCE($3, admin_notes), resolved_at = ${status === TicketStatus.RESOLVED ? 'CURRENT_TIMESTAMP' : 'resolved_at'}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *
+    `;
+    const result = await query(sql, [id, status, adminNotes || null]);
+    return result.rows[0] || null;
+  },
+
+  /* ======================== USER MESSAGES ======================== */
+
+  async saveUserMessage(data: { ticket_id: string; sender_id: string; sender_type: string; message: string }): Promise<any> {
+    const sql = `
+      INSERT INTO user_support_messages (ticket_id, sender_id, sender_type, message)
+      VALUES ($1, $2, $3, $4)
+      RETURNING *
+    `;
+    const result = await query(sql, [data.ticket_id, data.sender_id, data.sender_type, data.message]);
+    return result.rows[0];
+  },
+
+  async findMessagesByUserTicketId(ticketId: string): Promise<any[]> {
+    const sql = `
+      SELECT * FROM user_support_messages
       WHERE ticket_id = $1
       ORDER BY created_at ASC
     `;

@@ -72,7 +72,7 @@ export const findNearbyDriversValidator = celebrate({
     newTrip: Joi.array().items(TripValidation.createTripValidation.unknown(true)).min(1).required(),
     // Radius: optional, defaults to 5km (5000 meters)
     radius: Joi.number().min(100).max(50000).default(5000)
-    .messages({ 'number.max': 'Search radius cannot exceed 50km' }).optional(),
+      .messages({ 'number.max': 'Search radius cannot exceed 50km' }).optional(),
   }),
 });
 

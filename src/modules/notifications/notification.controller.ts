@@ -47,9 +47,9 @@ export const NotificationController = {
 
     /**
      * POST /api/notifications/send
-     * Send a push notification to a specific driver (for production use)
+     * Send a push notification to a specific driver or user (for production use)
      *
-     * Body: { driverId: string, title: string, body: string, data?: object }
+     * Body: { driverId?: string, userId?: string, title: string, body: string, data?: object }
      */
     async sendNotification(
         req: Request,
@@ -57,25 +57,36 @@ export const NotificationController = {
         next: NextFunction,
     ) {
         try {
-            const { driverId, title, body, data } = req.body;
+            const { driverId, userId, title, body, data } = req.body;
 
-            if (!driverId || !title || !body) {
+            if (!(driverId || userId) || !title || !body) {
                 throw {
                     statusCode: 400,
-                    message: 'driverId, title, and body are required',
+                    message: 'Either driverId or userId, along with title, and body are required',
                 };
             }
 
-            const messageId = await NotificationService.sendNotificationToDriver(
-                driverId,
-                title,
-                body,
-                data,
-            );
+            let messageId;
+            if (driverId) {
+                messageId = await NotificationService.sendNotificationToDriver(
+                    driverId,
+                    title,
+                    body,
+                    data,
+                );
+            } else if (userId) {
+                messageId = await NotificationService.sendNotificationToUser(
+                    userId,
+                    title,
+                    body,
+                    data,
+                );
+            }
 
             return successResponse(res, 200, 'Notification sent successfully', {
                 messageId,
                 driverId,
+                userId,
             });
         } catch (err: any) {
             logger.error(`Error sending notification: ${err.message}`);

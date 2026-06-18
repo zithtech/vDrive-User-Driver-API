@@ -2,6 +2,7 @@ import { SupportRepository } from './support.repository';
 import { logger } from '../../shared/logger';
 import { notificationService } from '../../services/notificationService';
 import { DriverRepository } from '../drivers/driver.repository';
+import { UserRepository } from '../users/user.repository';
 import { notifyAdmin } from '../../sockets/admin-socket.service';
 
 export const SupportService = {
@@ -97,6 +98,78 @@ export const SupportService = {
         }
       } catch (err) {
         logger.error(`Failed to send support notification: ${err}`);
+      }
+    }
+
+    return newMessage;
+  },
+
+  /* ======================== USER TICKETS ======================== */
+
+  async createUserTicket(data: { user_id: string; subject: string; description: string; priority?: string; category?: string }) {
+    logger.info(`[Support] Creating ticket for user: ${data.user_id}, subject: ${data.subject}, category: ${data.category || 'general'}`);
+    const ticket = await SupportRepository.createUserTicket(data);
+    
+    // Automatically add an initial system message
+    await SupportRepository.saveUserMessage({
+      ticket_id: ticket.id,
+      sender_id: '00000000-0000-0000-0000-000000000000', // System UUID
+      sender_type: 'system',
+      message: 'Thank you for contacting VDrive Support. We are connecting you to an agent. Please describe your issue in detail.'
+    });
+
+    // Notify Admin backend about the new ticket instantly
+    notifyAdmin('USER_AGENT_REQUESTED', {
+      ...ticket,
+      timestamp: new Date().toISOString()
+    });
+
+    return ticket;
+  },
+
+  async getUserTickets(userId: string) {
+    return SupportRepository.findTicketsByUserId(userId);
+  },
+
+  async getAllUserTickets(limit: number, offset: number, status?: string) {
+    return SupportRepository.findAllUserTickets(limit, offset, status);
+  },
+
+  async getUserTicketById(id: string) {
+    return SupportRepository.findUserTicketById(id);
+  },
+
+  async updateUserTicketStatus(id: string, status: any, adminNotes?: string) {
+    logger.info(`[Support] Updating user ticket ${id} status to: ${status}`);
+    return SupportRepository.updateUserTicketStatus(id, status, adminNotes);
+  },
+
+  async getUserTicketMessages(ticketId: string) {
+    return SupportRepository.findMessagesByUserTicketId(ticketId);
+  },
+
+  async saveUserMessage(data: { ticket_id: string; sender_id: string; sender_type: string; message: string }) {
+    const newMessage = await SupportRepository.saveUserMessage(data);
+
+    // If admin replies, notify the user
+    if (data.sender_type === 'admin') {
+      try {
+        const ticket = await SupportRepository.findUserTicketById(data.ticket_id);
+        if (ticket && ticket.user_id) {
+          const fcmToken = await UserRepository.getFcmTokenById(ticket.user_id);
+          if (fcmToken) {
+            await notificationService.sendPushNotification(fcmToken, {
+              title: 'Support Update',
+              body: `An agent replied to your ticket: "${data.message.substring(0, 50)}..."`,
+              data: {
+                type: 'USER_SUPPORT_REPLY',
+                ticketId: data.ticket_id
+              }
+            });
+          }
+        }
+      } catch (err) {
+        logger.error(`Failed to send support notification to user: ${err}`);
       }
     }
 

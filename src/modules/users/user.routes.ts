@@ -66,5 +66,4 @@ router.post('/update-fcm-token', UserController.updateToken)
 
 router.delete('/documents/:userid/delete', UserController.deleteDocument)
 
-
 export default router;

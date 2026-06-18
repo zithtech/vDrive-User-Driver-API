@@ -85,4 +85,45 @@ router.patch(
 // Get ticket messages
 router.get('/tickets/:id/messages', SupportController.getTicketMessages);
 
+/* ======================== USER TICKETS ======================== */
+
+// User — create support ticket
+router.post(
+  '/tickets/user',
+  celebrate({
+    [Segments.BODY]: Joi.object().keys({
+      user_id: Joi.string().required(),
+      subject: Joi.string().required(),
+      description: Joi.string().required(),
+      priority: Joi.string().valid('low', 'medium', 'high').optional(),
+      category: Joi.string().valid('payment', 'documents', 'app_crash', 'account', 'subscription', 'rides', 'general', 'lost_item', 'driver_issue', 'safety').optional(),
+    }),
+  }),
+  SupportController.createUserTicket
+);
+
+// User — get my tickets
+router.get('/tickets/user/my-tickets/:userId', SupportController.getUserTickets);
+
+// Admin — get all user tickets
+router.get('/tickets/user/all', SupportController.getAllUserTickets);
+
+// Get single user ticket
+router.get('/tickets/user/:id', SupportController.getUserTicketById);
+
+// Admin — update user ticket status
+router.patch(
+  '/tickets/user/:id/status',
+  celebrate({
+    [Segments.BODY]: Joi.object().keys({
+      status: Joi.string().valid('open', 'in_progress', 'resolved', 'closed').required(),
+      admin_notes: Joi.string().optional().allow(''),
+    }),
+  }),
+  SupportController.updateUserTicketStatus
+);
+
+// Get user ticket messages
+router.get('/tickets/user/:id/messages', SupportController.getUserTicketMessages);
+
 export default router;

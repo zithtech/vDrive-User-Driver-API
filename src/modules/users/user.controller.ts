@@ -8,7 +8,7 @@ import { cleanUndefined, formFullName, generateOTP } from '../../utilities/helpe
 import { UserRepository } from './user.repository';
 import { notifyAdmin } from '../../sockets/admin-socket.service';
 import { EmailService } from '../email/email.service';
-import { s3Service } from '../s3/s3.service';
+import { S3Service, s3Service } from '../s3/s3.service';
 
 export const UserController = {
   async getUsers(req: Request, res: Response, next: NextFunction) {
