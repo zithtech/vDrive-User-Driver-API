@@ -28,10 +28,7 @@ router.post(
   DriverDocumentsController.saveDocument
 );
 
-router.post(
-  '/submit/:driverId',
-  DriverDocumentsController.submitDocuments
-);
+router.post('/submit/:driverId', DriverDocumentsController.submitDocuments);
 
 router.patch('/verify/:id', DriverDocumentsController.verifyDocument);
 

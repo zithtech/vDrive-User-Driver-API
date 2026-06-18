@@ -1,9 +1,18 @@
 import { getClient, query } from '../../shared/database';
 import { logger } from '../../shared/logger';
-import { Driver, CreateDriverInput, UpdateDriverInput, Document, KYC, Credit, Availability, Performance, Payments } from './driver.model';
+import {
+  Driver,
+  CreateDriverInput,
+  UpdateDriverInput,
+  Document,
+  KYC,
+  Credit,
+  Availability,
+  Performance,
+  Payments,
+} from './driver.model';
 import { DriverReferralRepository } from '../driver-referrals/driver-referral.repository';
 import { DriverOnboardingStatus } from '../../enums/user.enums';
-
 
 export const DriverRepository = {
   async findDriverById(id: string): Promise<Driver | null> {
@@ -17,7 +26,10 @@ export const DriverRepository = {
       await client.query('BEGIN');
 
       // Generate unique referral code for the new driver
-      const referralCode = await DriverReferralRepository.generateUniqueReferralCode(driverData.first_name, 'DRIVER');
+      const referralCode = await DriverReferralRepository.generateUniqueReferralCode(
+        driverData.first_name,
+        'DRIVER'
+      );
 
       // Handle referred_by if provided (it comes as a code from the frontend)
       let referrerId = null;
@@ -64,7 +76,7 @@ export const DriverRepository = {
           driverData.is_vibration_enabled ?? true,
           driverData.total_earnings || 0,
           referralCode,
-          referrerId
+          referrerId,
         ]
       );
 
@@ -77,7 +89,7 @@ export const DriverRepository = {
           referrer_id: referrerId,
           referee_id: driverId,
           referral_type: 'DRIVER',
-          status: 'PENDING'
+          status: 'PENDING',
         });
       }
 
@@ -116,8 +128,6 @@ export const DriverRepository = {
       client.release();
     }
   },
-
-
 
   async update(id: string, driverData: UpdateDriverInput): Promise<Driver | null> {
     const client = await getClient();
@@ -248,7 +258,9 @@ export const DriverRepository = {
         driverValues.push(JSON.stringify(performanceData));
       } else if (driverData.rating !== undefined) {
         // If only rating is provided, still sync it to performance JSONB
-        driverFields.push(`performance = COALESCE(performance, '{}'::jsonb) || jsonb_build_object('averageRating', $${paramCount++}::numeric)`);
+        driverFields.push(
+          `performance = COALESCE(performance, '{}'::jsonb) || jsonb_build_object('averageRating', $${paramCount++}::numeric)`
+        );
         driverValues.push(driverData.rating);
       }
       if (driverData.payments) {
@@ -263,7 +275,6 @@ export const DriverRepository = {
           driverValues
         );
       }
-
 
       // Update documents if provided
       if (driverData.documents && driverData.documents.length > 0) {
@@ -370,7 +381,7 @@ export const DriverRepository = {
     // Get completed trips count
     try {
       const completedTripsResult = await query(
-        'SELECT COUNT(*) FROM trips WHERE driver_id = $1 AND trip_status = \'COMPLETED\'',
+        "SELECT COUNT(*) FROM trips WHERE driver_id = $1 AND trip_status = 'COMPLETED'",
         [id]
       );
       driver.total_trips = parseInt(completedTripsResult.rows[0].count);
@@ -378,7 +389,6 @@ export const DriverRepository = {
       logger.error(`Error fetching total completed trips for driver ${id}: ${error}`);
       driver.total_trips = 0;
     }
-
 
     // Get documents
     const documentsResult = await query('SELECT * FROM driver_documents WHERE driver_id = $1', [
@@ -439,7 +449,12 @@ export const DriverRepository = {
     );
   },
 
-  async findAll(limit: number = 50, offset: number = 0, status?: string, onboardingStatus?: string): Promise<Driver[]> {
+  async findAll(
+    limit: number = 50,
+    offset: number = 0,
+    status?: string,
+    onboardingStatus?: string
+  ): Promise<Driver[]> {
     let queryStr = 'SELECT * FROM drivers';
     const params: any[] = [];
     const conditions: string[] = [];
@@ -496,7 +511,6 @@ export const DriverRepository = {
       }
     };
 
-
     const fName = driver.first_name || '';
     const lName = driver.last_name || '';
 
@@ -504,20 +518,23 @@ export const DriverRepository = {
     const profileUrl = (() => {
       const primary = safeParse(driver.profile_pic_url);
       if (primary) {
-        const url = typeof primary === 'object' ? primary.url || primary.front || undefined : primary;
+        const url =
+          typeof primary === 'object' ? primary.url || primary.front || undefined : primary;
         if (url) {
           logger.info(`[mapToDriver] Resolved image from primary field for driver ${driver.id}`);
           return url;
         }
       }
-      const selfie = documents.find(d => 
-        d.document_type?.toLowerCase() === 'profile_selfie' || 
-        d.document_type?.toLowerCase() === 'profile selfie' ||
-        d.document_type === 'PROFILE_SELFIE'
+      const selfie = documents.find(
+        (d) =>
+          d.document_type?.toLowerCase() === 'profile_selfie' ||
+          d.document_type?.toLowerCase() === 'profile selfie' ||
+          d.document_type === 'PROFILE_SELFIE'
       );
       if (!selfie || !selfie.document_url) return undefined;
       const selfieUrl = safeParse(selfie.document_url);
-      const url = typeof selfieUrl === 'object' ? selfieUrl.url || selfieUrl.front || undefined : selfieUrl;
+      const url =
+        typeof selfieUrl === 'object' ? selfieUrl.url || selfieUrl.front || undefined : selfieUrl;
       if (url) {
         logger.info(`[mapToDriver] Resolved image from selfie document for driver ${driver.id}`);
       }
@@ -576,14 +593,16 @@ export const DriverRepository = {
         details: log.details || '',
         createdAt: log.created_at,
       })),
-      active_subscription: activeSubscription ? {
-        platform_subscription_id: activeSubscription.id,
-        plan_name: activeSubscription.plan_name,
-        billing_cycle: activeSubscription.billing_cycle,
-        start_date: activeSubscription.start_date,
-        expiry_date: activeSubscription.expiry_date,
-        status: activeSubscription.status,
-      } : undefined,
+      active_subscription: activeSubscription
+        ? {
+            platform_subscription_id: activeSubscription.id,
+            plan_name: activeSubscription.plan_name,
+            billing_cycle: activeSubscription.billing_cycle,
+            start_date: activeSubscription.start_date,
+            expiry_date: activeSubscription.expiry_date,
+            status: activeSubscription.status,
+          }
+        : undefined,
       created_at: driver.created_at,
       updated_at: driver.updated_at,
       performance: safeParse(driver.performance),
@@ -628,14 +647,14 @@ export const DriverRepository = {
       if (drivers.length > 0) {
         return {
           drivers,
-          searchedRadius: radius
+          searchedRadius: radius,
         };
       }
     }
 
     return {
       drivers: [],
-      searchedRadius: radiusTiers[radiusTiers.length - 1]
+      searchedRadius: radiusTiers[radiusTiers.length - 1],
     };
   },
   async findNearbyDrivers(lng: number, lat: number, radiusMeters: number) {
@@ -646,7 +665,7 @@ export const DriverRepository = {
 
       // 1. Get real-time drivers within radius from Redis
       // Returns: [ [ 'driverId', 'distance', [ 'lng', 'lat' ] ], ... ]
-      const nearbyFromRedis = await redis.georadius(
+      const nearbyFromRedis = (await redis.georadius(
         'driver_locations',
         lng,
         lat,
@@ -655,7 +674,7 @@ export const DriverRepository = {
         'WITHDIST',
         'WITHCOORD',
         'ASC'
-      ) as any[];
+      )) as any[];
 
       if (!nearbyFromRedis || nearbyFromRedis.length === 0) {
         logger.info('No drivers found in Redis, falling back to PostGIS');
@@ -729,7 +748,6 @@ export const DriverRepository = {
     return rows;
   },
 
-
   async updateLocation(id: string, lat: number, lng: number, address: string) {
     const sqlQuery = `
             UPDATE drivers 
@@ -755,10 +773,10 @@ export const DriverRepository = {
    * Dedicated method to update only the FCM token
    */
   async updateFcmToken(driverId: string, fcmToken: string): Promise<void> {
-    await query(
-      'UPDATE drivers SET fcm_token = $1, updated_at = NOW() WHERE id = $2',
-      [fcmToken, driverId],
-    );
+    await query('UPDATE drivers SET fcm_token = $1, updated_at = NOW() WHERE id = $2', [
+      fcmToken,
+      driverId,
+    ]);
   },
 
   /**
@@ -783,8 +801,14 @@ export const DriverRepository = {
    * Atomically add credit balance to a driver's wallet/JSONB field
    * and record the transaction in driver_credit_usage.
    */
-  async addCredit(driverId: string, amount: number, type: string, description: string, externalClient?: any): Promise<void> {
-    const client = externalClient || await getClient();
+  async addCredit(
+    driverId: string,
+    amount: number,
+    type: string,
+    description: string,
+    externalClient?: any
+  ): Promise<void> {
+    const client = externalClient || (await getClient());
     const shouldRelease = !externalClient;
     const shouldTransact = !externalClient;
 
@@ -828,8 +852,14 @@ export const DriverRepository = {
   /**
    * Atomically deduct credit balance from a driver's wallet.
    */
-  async deductCredit(driverId: string, amount: number, type: string, description: string, externalClient?: any): Promise<void> {
-    const client = externalClient || await getClient();
+  async deductCredit(
+    driverId: string,
+    amount: number,
+    type: string,
+    description: string,
+    externalClient?: any
+  ): Promise<void> {
+    const client = externalClient || (await getClient());
     const shouldRelease = !externalClient;
     const shouldTransact = !externalClient;
 
@@ -872,5 +902,5 @@ export const DriverRepository = {
     } finally {
       if (shouldRelease) client.release();
     }
-  }
+  },
 };

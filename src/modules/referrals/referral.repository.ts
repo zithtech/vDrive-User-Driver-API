@@ -3,18 +3,14 @@ import { query, getClient } from '../../shared/database';
 
 export const ReferralRepository = {
   async getReferralCodeByUserId(userId: string) {
-    const existingCode = await query(
-      'SELECT code FROM referral_codes WHERE user_id = $1',
-      [userId]
-    );
+    const existingCode = await query('SELECT code FROM referral_codes WHERE user_id = $1', [
+      userId,
+    ]);
     return existingCode.rows[0]?.code || null;
   },
 
   async findByReferralCode(code: string) {
-    const existingCode = await query(
-      `SELECT user_id FROM referral_codes WHERE code = $1`,
-      [code]
-    );
+    const existingCode = await query(`SELECT user_id FROM referral_codes WHERE code = $1`, [code]);
     return existingCode.rows[0]?.user_id || null;
   },
 
@@ -58,14 +54,14 @@ export const ReferralRepository = {
 
   // async createRefereeCoupon(refereeUserId: string, minRideAmount: number) {
   //   const refereeCoupon = await query(
-  //     `INSERT INTO coupons 
-  //      (code, discount_type, discount_value, min_ride_amount, 
-  //       user_eligibility, is_referral_code, is_active, 
+  //     `INSERT INTO coupons
+  //      (code, discount_type, discount_value, min_ride_amount,
+  //       user_eligibility, is_referral_code, is_active,
   //       valid_from, valid_until)
-  //      VALUES 
-  //      ($1, 'PERCENTAGE', 50, $2, $3, TRUE, TRUE, 
+  //      VALUES
+  //      ($1, 'PERCENTAGE', 50, $2, $3, TRUE, TRUE,
   //       current_timestamp, current_timestamp + INTERVAL '30 days')
-  //      ON CONFLICT (code) DO UPDATE SET 
+  //      ON CONFLICT (code) DO UPDATE SET
   //        is_active = EXCLUDED.is_active,
   //        valid_until = EXCLUDED.valid_until
   //      RETURNING id, discount_value`,
@@ -74,7 +70,12 @@ export const ReferralRepository = {
   //   return refereeCoupon.rows[0];
   // },
 
-  async completeReferralTransaction(relationshipId: string, refereeUserId: string, REFERRER_REWARD: number, REFEREE_REWARD: number) {
+  async completeReferralTransaction(
+    relationshipId: string,
+    refereeUserId: string,
+    REFERRER_REWARD: number,
+    REFEREE_REWARD: number
+  ) {
     const client = await getClient();
 
     try {
@@ -129,7 +130,7 @@ export const ReferralRepository = {
         referrerId,
         refereeId: refereeUserId,
         referrerReward: REFERRER_REWARD,
-        refereeReward: REFEREE_REWARD
+        refereeReward: REFEREE_REWARD,
       };
     } catch (error) {
       await client.query('ROLLBACK');
@@ -171,5 +172,5 @@ export const ReferralRepository = {
       [userType]
     );
     return result.rows[0];
-  }
+  },
 };

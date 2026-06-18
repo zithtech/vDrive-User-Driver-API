@@ -13,7 +13,6 @@ import { AuthRepository } from './auth.repository';
 import { DriverRepository } from '../drivers/driver.repository';
 import { query } from '../../shared/database';
 
-
 interface AuthRequest extends Request {
   user?: { id: string };
 }
@@ -43,7 +42,7 @@ export const AuthController = {
         expiresIn: result.expiresIn,
         otp: result.otp,
         exists: result.userexists,
-        userName: result.userData
+        userName: result.userData,
       });
     } catch (error: any) {
       logger.warn(`OTP send failed for ${phone_number || 'unknown'}: ${error.detail}`);
@@ -52,10 +51,13 @@ export const AuthController = {
   },
 
   async verifyOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
-    const { phone_number, role, otp, device_id, allow_new_device, fcm_token, referred_by } = req.body;
+    const { phone_number, role, otp, device_id, allow_new_device, fcm_token, referred_by } =
+      req.body;
 
     try {
-      logger.info(`OTP verification attempt for: ${phone_number || 'unknown'} (Referral: ${referred_by || 'none'})`);
+      logger.info(
+        `OTP verification attempt for: ${phone_number || 'unknown'} (Referral: ${referred_by || 'none'})`
+      );
 
       if (!phone_number?.trim()) {
         throw { statusCode: 400, message: 'Phone number is required' };
@@ -81,7 +83,6 @@ export const AuthController = {
       next(error);
     }
   },
-
 
   async refreshAccessToken(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -273,7 +274,9 @@ export const AuthController = {
     const { phone_number, otp, device_id, fcm_token, referred_by } = req.body;
 
     try {
-      logger.info(`Driver login request received for: ${phone_number || 'unknown'} (Referral: ${referred_by || 'none'})`);
+      logger.info(
+        `Driver login request received for: ${phone_number || 'unknown'} (Referral: ${referred_by || 'none'})`
+      );
 
       if (!phone_number?.trim()) {
         throw { statusCode: 400, message: 'Phone number is required' };
@@ -311,7 +314,6 @@ export const AuthController = {
       next(error);
     }
   },
-
 
   // auth.controller.ts
   async validateSession(req: Request, res: Response, next: NextFunction) {
@@ -359,10 +361,7 @@ export const AuthController = {
       if (role === 'driver') {
         userData = await DriverRepository.findById(userId);
       } else {
-        const result = await query(
-          `SELECT * FROM users WHERE id = $1 LIMIT 1`,
-          [userId]
-        );
+        const result = await query(`SELECT * FROM users WHERE id = $1 LIMIT 1`, [userId]);
         userData = result.rows[0];
       }
 
@@ -376,10 +375,16 @@ export const AuthController = {
 
       // ✅ 4. Check user status
       const userStatus = role === 'driver' ? userData.status : userData.status; // Both use .status
-      if (userStatus === 'banned' || userStatus === 'deleted' || userData.status === 'blocked' || userData.status === 'inactive' || userData.status === 'suspended') {
+      if (
+        userStatus === 'banned' ||
+        userStatus === 'deleted' ||
+        userData.status === 'blocked' ||
+        userData.status === 'inactive' ||
+        userData.status === 'suspended'
+      ) {
         const notes = userData.notes || userData.reason || 'No reason provided by admin';
         const status = userData.status;
-        if(status === 'suspended'){
+        if (status === 'suspended') {
           return res.status(403).json({
             success: false,
             code: 'ACCOUNT_SUSPENDED',
@@ -388,7 +393,7 @@ export const AuthController = {
             status: status || 'suspended',
           });
         }
-        if(status === 'blocked'){
+        if (status === 'blocked') {
           return res.status(403).json({
             success: false,
             code: 'ACCOUNT_BLOCKED',
@@ -415,7 +420,6 @@ export const AuthController = {
       );
 
       return successResponse(res, 200, 'Session valid', userData);
-
     } catch (err) {
       next(err);
     }

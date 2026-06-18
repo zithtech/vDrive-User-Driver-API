@@ -30,5 +30,4 @@ export const AuthValidation = {
     refreshToken: refreshTokenRule,
     device_id: deviceIdRule,
   }),
-
 };

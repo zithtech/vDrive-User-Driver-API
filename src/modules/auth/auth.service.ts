@@ -6,7 +6,12 @@ import * as bcrypt from 'bcrypt';
 import jwt, { JwtPayload, SignOptions } from 'jsonwebtoken';
 import config from '../../config';
 import { UserRepository } from '../users/user.repository';
-import { OnboardingStatus, DriverOnboardingStatus, UserRole, UserStatus } from '../../enums/user.enums';
+import {
+  OnboardingStatus,
+  DriverOnboardingStatus,
+  UserRole,
+  UserStatus,
+} from '../../enums/user.enums';
 import { isInvalidUser, generateOTP } from '../../utilities/helper';
 import { User } from '../users/user.model';
 import { logger } from '../../shared/logger';
@@ -23,7 +28,12 @@ interface VerifyOtpUser {
   referred_by?: string;
 }
 
-async function createNewUser(role: string, phone_number: string, device_id: string, referred_by?: string) {
+async function createNewUser(
+  role: string,
+  phone_number: string,
+  device_id: string,
+  referred_by?: string
+) {
   const baseInput: any = {
     first_name: '',
     last_name: '',
@@ -32,7 +42,8 @@ async function createNewUser(role: string, phone_number: string, device_id: stri
     role,
     status: UserStatus.ACTIVE,
     device_id,
-    onboarding_status: role === 'driver' ? DriverOnboardingStatus.PHONE_VERIFIED : OnboardingStatus.PHONE_VERIFIED,
+    onboarding_status:
+      role === 'driver' ? DriverOnboardingStatus.PHONE_VERIFIED : OnboardingStatus.PHONE_VERIFIED,
     date_of_birth: null,
     gender: null,
     referred_by: referred_by || null,
@@ -74,8 +85,6 @@ async function createNewUser(role: string, phone_number: string, device_id: stri
   throw { statusCode: 400, message: `Unsupported role: ${role}` };
 }
 
-
-
 export const AuthService = {
   generateResetToken(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -101,9 +110,9 @@ export const AuthService = {
     return bcrypt.compare(value, hashed);
   },
 
-  //****************************************************************************** 
+  //******************************************************************************
   // ─── Request OTP Methods ─────────────────────────────────────────────────────
-  //****************************************************************************** 
+  //******************************************************************************
 
   async requestOtp({
     phone_number,
@@ -117,8 +126,7 @@ export const AuthService = {
     device_id: string;
     allow_new_device: boolean;
     fcm_token?: string;
-  }): Promise<{ expiresIn: number, userexists: boolean, userData: any, otp: any  }> {
-    
+  }): Promise<{ expiresIn: number; userexists: boolean; userData: any; otp: any }> {
     const {
       otpExpiryTime: TTL,
       maxAttempts: MaxAttempt,
@@ -130,7 +138,7 @@ export const AuthService = {
     try {
       // Get existing OTP data for security checks
       const otpData = (await AuthRepository.getOtpData(phone_number, role)) as any;
-     
+
       // 1. Check if currently blocked
       if (otpData?.blocked_until && new Date() < new Date(otpData.blocked_until)) {
         const remainingTime = Math.max(
@@ -145,7 +153,9 @@ export const AuthService = {
 
       // 2. Handle Request Rate Limiting
       let currentRequestCount = otpData?.request_count || 0;
-      const lastRequestedAt = otpData?.last_requested_at ? new Date(otpData.last_requested_at) : null;
+      const lastRequestedAt = otpData?.last_requested_at
+        ? new Date(otpData.last_requested_at)
+        : null;
       const now = new Date();
 
       if (
@@ -158,7 +168,8 @@ export const AuthService = {
           const blockUntil = new Date(now.getTime() + otpBlockDuration * 60 * 1000);
           await AuthRepository.blockUser(phone_number, role, blockUntil);
           // Notify user about being blocked
-          const targetFcmToken = fcm_token || (await AuthRepository.getUser(phone_number, role))?.fcm_token;
+          const targetFcmToken =
+            fcm_token || (await AuthRepository.getUser(phone_number, role))?.fcm_token;
           if (targetFcmToken) {
             if (role === 'driver') {
               await DriverNotifications.otpLimitExceeded(targetFcmToken, otpBlockDuration);
@@ -170,7 +181,7 @@ export const AuthService = {
           throw {
             statusCode: 429,
             message: `OTP request limit exceeded. You are blocked for ${otpBlockDuration} minutes.`,
-            code: "TOO_MANY_REQUESTS"
+            code: 'TOO_MANY_REQUESTS',
           };
         }
       } else {
@@ -180,9 +191,9 @@ export const AuthService = {
 
       // Verify existing user
       let userData = await AuthRepository.getUser(phone_number, role);
-      let isExistingUser = !!userData;
+      const isExistingUser = !!userData;
 
-       if (isExistingUser && userData) {
+      if (isExistingUser && userData) {
         const userId = userData.id as string; // ✅ assert type
 
         if (!userId) {
@@ -190,7 +201,7 @@ export const AuthService = {
         }
 
         // ✅ Pass userId (guaranteed string) and device_id
-        const activeSession = await AuthRepository.getActiveSession(userId,role, device_id);
+        const activeSession = await AuthRepository.getActiveSession(userId, role, device_id);
 
         if (activeSession) {
           if (!allow_new_device) {
@@ -214,7 +225,6 @@ export const AuthService = {
         }
       }
 
-
       // Generate otp and hash it
       const otpLength = role === 'driver' ? 6 : 4;
       const otp = AuthService.genNumericOTP(otpLength);
@@ -226,17 +236,23 @@ export const AuthService = {
       const expires_at = new Date(Date.now() + TTL * 60 * 1000);
 
       // Save otp hash
-      await AuthRepository.saveHashedOtp(phone_number, role, otpHash, expires_at, 1,
-        currentRequestCount);
+      await AuthRepository.saveHashedOtp(
+        phone_number,
+        role,
+        otpHash,
+        expires_at,
+        1,
+        currentRequestCount
+      );
       if (userData?.fcm_token) {
-        await UserNotifications.otpSent(userData.fcm_token,otp);
+        await UserNotifications.otpSent(userData.fcm_token, otp);
       }
 
-      return { 
-        expiresIn: TTL, 
-        userexists: isExistingUser, 
-        userData: userData?.full_name, 
-        otp: otp 
+      return {
+        expiresIn: TTL,
+        userexists: isExistingUser,
+        userData: userData?.full_name,
+        otp: otp,
       };
     } catch (err: any) {
       if (err.statusCode) throw err;
@@ -248,11 +264,19 @@ export const AuthService = {
     }
   },
 
-  //****************************************************************************** 
+  //******************************************************************************
   // ─── Verify OTP Methods ─────────────────────────────────────────────────────
-  //****************************************************************************** 
+  //******************************************************************************
 
-  async verifyOtp({ phone_number, role, otp, device_id, allow_new_device, fcm_token, referred_by }: VerifyOtpUser) {
+  async verifyOtp({
+    phone_number,
+    role,
+    otp,
+    device_id,
+    allow_new_device,
+    fcm_token,
+    referred_by,
+  }: VerifyOtpUser) {
     try {
       logger.info(`OTP verification attempt for: ${phone_number} with role: ${role}`);
       const { maxAttempts: MaxAttempt, otpBlockDuration } = config.auth;
@@ -275,7 +299,7 @@ export const AuthService = {
         throw {
           statusCode: 429,
           message: `Account is temporarily locked due to too many failed attempts. Try again after ${remainingTime} minutes.`,
-          code:"TOO_MANY_ATTEMPTS"
+          code: 'TOO_MANY_ATTEMPTS',
         };
       }
 
@@ -301,7 +325,8 @@ export const AuthService = {
           await AuthRepository.blockUser(phone_number, role, blockUntil);
 
           // Notify user about being blocked
-          const targetFcmToken = fcm_token || (await AuthRepository.getUser(phone_number, role))?.fcm_token;
+          const targetFcmToken =
+            fcm_token || (await AuthRepository.getUser(phone_number, role))?.fcm_token;
           if (targetFcmToken) {
             if (role === 'driver') {
               await DriverNotifications.tooManyAttempts(targetFcmToken, otpBlockDuration);
@@ -321,11 +346,9 @@ export const AuthService = {
         };
       }
 
-
       // Verify existing user
       let userData = await AuthRepository.getUser(phone_number, role);
       let isExistingUser = !!userData;
-
 
       if (isExistingUser && role === 'driver') {
         const driverId = (userData as any).driverId || userData?.id;
@@ -337,7 +360,7 @@ export const AuthService = {
       // Check active session on another device
       // ✅ Device conflict check — only for DIFFERENT devices
       if (isExistingUser && userData) {
-        const userId = userData.id as string || (userData as any).driverId;
+        const userId = (userData.id as string) || (userData as any).driverId;
 
         if (!userId) {
           throw { statusCode: 500, message: 'User ID not found' };
@@ -364,26 +387,31 @@ export const AuthService = {
         }
       }
 
-
       // Clear otp record
       await AuthRepository.clearOtpRecord(phone_number, role);
 
       // Create new user/driver if not exists
       if (!isExistingUser) {
-        userData = await createNewUser(role, phone_number, device_id, referred_by) as any;
-        if(role === 'driver'){
-        try {
-          const webhookUrl = `${config.adminBackendUrl}/api/webhooks/driver-events`;
-          axios.post(webhookUrl, {
-            eventType: 'NEW_DRIVER',
-            message: `New Driver ${phone_number} Registered`,
-            data: userData
-          }, {
-            headers: { 'x-api-key': config.internalServiceApiKey }
-          }).catch(err => logger.error(`Webhook trigger failed: ${err.message}`));
-        } catch (e) {
-          // Ignore
-        }
+        userData = (await createNewUser(role, phone_number, device_id, referred_by)) as any;
+        if (role === 'driver') {
+          try {
+            const webhookUrl = `${config.adminBackendUrl}/api/webhooks/driver-events`;
+            axios
+              .post(
+                webhookUrl,
+                {
+                  eventType: 'NEW_DRIVER',
+                  message: `New Driver ${phone_number} Registered`,
+                  data: userData,
+                },
+                {
+                  headers: { 'x-api-key': config.internalServiceApiKey },
+                }
+              )
+              .catch((err) => logger.error(`Webhook trigger failed: ${err.message}`));
+          } catch (e) {
+            // Ignore
+          }
         }
         if (!userData?.id) {
           throw { statusCode: 500, message: 'Failed to create user' };
@@ -393,10 +421,21 @@ export const AuthService = {
         // Handle transitions for existing users
         let updatedStatus: OnboardingStatus | undefined;
         const currentStatus = userData.onboarding_status;
-        
-        if ((currentStatus as any) === OnboardingStatus.PENDING || (currentStatus as any) === 'pending' || (currentStatus as any) === 'PENDING') {
-          updatedStatus = role === 'driver' ? DriverOnboardingStatus.PHONE_VERIFIED : OnboardingStatus.PHONE_VERIFIED as any;
-        } else if (role === 'customer' && ((currentStatus as any) === OnboardingStatus.PROFILE_COMPLETED || (currentStatus as any) === 'profile_completed')) {
+
+        if (
+          (currentStatus as any) === OnboardingStatus.PENDING ||
+          (currentStatus as any) === 'pending' ||
+          (currentStatus as any) === 'PENDING'
+        ) {
+          updatedStatus =
+            role === 'driver'
+              ? DriverOnboardingStatus.PHONE_VERIFIED
+              : (OnboardingStatus.PHONE_VERIFIED as any);
+        } else if (
+          role === 'customer' &&
+          ((currentStatus as any) === OnboardingStatus.PROFILE_COMPLETED ||
+            (currentStatus as any) === 'profile_completed')
+        ) {
           updatedStatus = OnboardingStatus.COMPLETED;
         }
 
@@ -455,7 +494,11 @@ export const AuthService = {
         isNewUser: !isExistingUser,
         accessToken,
         refreshToken,
-        onboarding_status: userData?.onboarding_status || (role === 'driver' ? DriverOnboardingStatus.PHONE_VERIFIED : OnboardingStatus.PHONE_VERIFIED), // Ensure status is returned
+        onboarding_status:
+          userData?.onboarding_status ||
+          (role === 'driver'
+            ? DriverOnboardingStatus.PHONE_VERIFIED
+            : OnboardingStatus.PHONE_VERIFIED), // Ensure status is returned
       };
     } catch (error: any) {
       logger.error(`OTP Verification Error: ${error}`);
@@ -521,7 +564,12 @@ export const AuthService = {
       }
 
       // ✅ Validate refresh token
-      const isValid = await AuthRepository.validateRefreshToken(decoded.id, decoded.role, device_id, refreshToken);
+      const isValid = await AuthRepository.validateRefreshToken(
+        decoded.id,
+        decoded.role,
+        device_id,
+        refreshToken
+      );
       if (!isValid) {
         throw { statusCode: 401, message: 'Invalid refresh token' };
       }
@@ -553,18 +601,18 @@ export const AuthService = {
   },
 
   async getDeletedUser(userId: string, role: string): Promise<User | null> {
-        if (role === 'driver') {
-            const driver = await DriverRepository.findById(userId);
-            if (driver) {
-                return { ...driver, id: driver.driverId } as any;
-            }
-        } else {
-            const user = await UserRepository.findById(userId, UserStatus.DELETED);
-            if (user) return user;
-        }
+    if (role === 'driver') {
+      const driver = await DriverRepository.findById(userId);
+      if (driver) {
+        return { ...driver, id: driver.driverId } as any;
+      }
+    } else {
+      const user = await UserRepository.findById(userId, UserStatus.DELETED);
+      if (user) return user;
+    }
 
-        return null;
-    },
+    return null;
+  },
 
   async verifyUser(phone_number: string, role: UserRole): Promise<boolean> {
     const user = await AuthRepository.getUser(phone_number, role);
@@ -576,14 +624,11 @@ export const AuthService = {
     return signOut;
   },
 
-
-
-  //****************************************************************************** 
+  //******************************************************************************
   // ─── Notify Device Logout Methods ─────────────────────────────────────────────
-  //****************************************************************************** 
+  //******************************************************************************
 
   async notifyDeviceLogout(userId: string, oldDeviceId: string, role: string, oldFcmToken: string) {
-
     try {
       if (oldFcmToken) {
         let result;
@@ -607,10 +652,8 @@ export const AuthService = {
       // ✅ Always set force_logout flag as fallback
       await AuthRepository.setForceLogout(userId, role, oldDeviceId);
       logger.info(`Force logout set for user: ${userId} device: ${oldDeviceId}`);
-
     } catch (err) {
       logger.error(`notifyDeviceLogout failed: ${err}`);
     }
   },
-
 };

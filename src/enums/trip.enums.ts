@@ -2,7 +2,7 @@ export enum RideType {
   ONE_WAY = 'ONE_WAY',
   ROUND_TRIP = 'ROUND_TRIP',
   OUTSTATION = 'OUTSTATION',
-  SCHEDULED ='SCHEDULED'
+  SCHEDULED = 'SCHEDULED',
   // DAILY = 'DAILY',
 }
 
@@ -98,21 +98,21 @@ export enum ChangeBy {
 }
 
 export enum TransmissionType {
-    MANUAL = 'MANUAL',
-    AUTOMATIC = 'AUTOMATIC',
-    SEMI_AUTOMATIC = 'SEMI_AUTOMATIC'
+  MANUAL = 'MANUAL',
+  AUTOMATIC = 'AUTOMATIC',
+  SEMI_AUTOMATIC = 'SEMI_AUTOMATIC',
 }
 
 export enum VehicleType {
-    HATCHBACK = 'Hatchback',
-    SEDAN = 'Sedan',
-    SUV = 'SUV',
-    AUTO = 'auto',
-    BIKE = 'bike',
-    TRUCK = 'truck',
-    CAR = 'car',
-    VAN = 'van',
-    MUV = 'MUV',
-    LUXURY = 'LUXURY',
-    TEMPO_TRAVELLER = 'TEMPO_TRAVELLER',
+  HATCHBACK = 'Hatchback',
+  SEDAN = 'Sedan',
+  SUV = 'SUV',
+  AUTO = 'auto',
+  BIKE = 'bike',
+  TRUCK = 'truck',
+  CAR = 'car',
+  VAN = 'van',
+  MUV = 'MUV',
+  LUXURY = 'LUXURY',
+  TEMPO_TRAVELLER = 'TEMPO_TRAVELLER',
 }

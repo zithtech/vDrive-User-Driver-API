@@ -55,7 +55,9 @@ router.post(
       subject: Joi.string().required(),
       description: Joi.string().required(),
       priority: Joi.string().valid('low', 'medium', 'high').optional(),
-      category: Joi.string().valid('payment', 'documents', 'app_crash', 'account', 'subscription', 'rides', 'general').optional(),
+      category: Joi.string()
+        .valid('payment', 'documents', 'app_crash', 'account', 'subscription', 'rides', 'general')
+        .optional(),
     }),
   }),
   SupportController.createTicket
@@ -96,7 +98,20 @@ router.post(
       subject: Joi.string().required(),
       description: Joi.string().required(),
       priority: Joi.string().valid('low', 'medium', 'high').optional(),
-      category: Joi.string().valid('payment', 'documents', 'app_crash', 'account', 'subscription', 'rides', 'general', 'lost_item', 'driver_issue', 'safety').optional(),
+      category: Joi.string()
+        .valid(
+          'payment',
+          'documents',
+          'app_crash',
+          'account',
+          'subscription',
+          'rides',
+          'general',
+          'lost_item',
+          'driver_issue',
+          'safety'
+        )
+        .optional(),
     }),
   }),
   SupportController.createUserTicket

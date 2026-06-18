@@ -27,16 +27,24 @@ export const DriverReferralRepository = {
     return result.rows[0];
   },
 
-  async findByRefereeId(refereeId: string, referralType: 'DRIVER' | 'CUSTOMER', client?: any): Promise<DriverReferral | null> {
+  async findByRefereeId(
+    refereeId: string,
+    referralType: 'DRIVER' | 'CUSTOMER',
+    client?: any
+  ): Promise<DriverReferral | null> {
     const q = client ? client.query.bind(client) : query;
-    const result = await q(
-      'SELECT * FROM referrals WHERE referee_id = $1 AND referral_type = $2',
-      [refereeId, referralType]
-    );
+    const result = await q('SELECT * FROM referrals WHERE referee_id = $1 AND referral_type = $2', [
+      refereeId,
+      referralType,
+    ]);
     return result.rows[0] || null;
   },
 
-  async updateStatus(id: string, status: 'PENDING' | 'COMPLETED' | 'EXPIRED', client?: any): Promise<DriverReferral> {
+  async updateStatus(
+    id: string,
+    status: 'PENDING' | 'COMPLETED' | 'EXPIRED',
+    client?: any
+  ): Promise<DriverReferral> {
     const q = client ? client.query.bind(client) : query;
     const result = await q(
       'UPDATE referrals SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
@@ -58,7 +66,10 @@ export const DriverReferralRepository = {
     return result.rows[0];
   },
 
-  async findByCode(code: string, referralType: 'DRIVER' | 'CUSTOMER' = 'DRIVER'): Promise<string | null> {
+  async findByCode(
+    code: string,
+    referralType: 'DRIVER' | 'CUSTOMER' = 'DRIVER'
+  ): Promise<string | null> {
     const tableName = referralType === 'DRIVER' ? 'drivers' : 'users';
     const result = await query(
       `SELECT id FROM ${tableName} WHERE UPPER(referral_code) = UPPER($1) LIMIT 1`,
@@ -67,27 +78,30 @@ export const DriverReferralRepository = {
     return result.rows[0]?.id || null;
   },
 
-  async generateUniqueReferralCode(firstName: string, referralType: 'DRIVER' | 'CUSTOMER' = 'DRIVER'): Promise<string> {
+  async generateUniqueReferralCode(
+    firstName: string,
+    referralType: 'DRIVER' | 'CUSTOMER' = 'DRIVER'
+  ): Promise<string> {
     const tableName = referralType === 'DRIVER' ? 'drivers' : 'users';
     const prefix = firstName ? firstName.substring(0, 3).toUpperCase() : 'REF';
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    
+
     let isUnique = false;
     let code = '';
-    
+
     while (!isUnique) {
       let randomPart = '';
       for (let i = 0; i < 4; i++) {
         randomPart += characters.charAt(Math.floor(Math.random() * characters.length));
       }
       code = `${prefix}${randomPart}`;
-      
+
       const existing = await query(`SELECT id FROM ${tableName} WHERE referral_code = $1`, [code]);
       if (existing.rows.length === 0) {
         isUnique = true;
       }
     }
-    
+
     return code;
   },
 
@@ -99,13 +113,15 @@ export const DriverReferralRepository = {
       );
       return result.rows[0] || null;
     } catch (err: any) {
-      logger.warn(`Referral configurations table not found or query failed: ${err.message}. Using defaults.`);
+      logger.warn(
+        `Referral configurations table not found or query failed: ${err.message}. Using defaults.`
+      );
       return {
         user_type: userType,
         referrer_reward: 50,
         referee_reward: 100,
-        is_active: true
+        is_active: true,
       };
     }
-  }
+  },
 };

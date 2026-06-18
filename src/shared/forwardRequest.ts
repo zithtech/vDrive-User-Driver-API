@@ -20,7 +20,7 @@ export const forwardRequest = async (req: any, res: any, next: any, url: string)
     return res.status(response.status).json(response.data);
   } catch (error: any) {
     logger.error(`Error In  URL: ${url}  tenant  :${req.tenant} `);
-    let responseData = {
+    const responseData = {
       data: {
         message:
           error?.response?.data?.message ||

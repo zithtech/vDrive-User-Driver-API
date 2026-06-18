@@ -10,7 +10,7 @@ import {
   ChangeType,
   ChangeBy,
   VehicleType,
-  TransmissionType
+  TransmissionType,
 } from '../../enums/trip.enums';
 import { enumString } from '../../utilities/helper';
 
@@ -25,15 +25,23 @@ export const userIdRule = Joi.string().guid({ version: 'uuidv4' }).required().me
   'string.base': 'user_id must be a string',
 });
 
-export const driverIdRule = Joi.string().guid({ version: 'uuidv4' }).allow(null).optional().messages({
-  'string.guid': 'driver_id must be a valid UUID v4',
-  'string.base': 'driver_id must be a string',
-});
+export const driverIdRule = Joi.string()
+  .guid({ version: 'uuidv4' })
+  .allow(null)
+  .optional()
+  .messages({
+    'string.guid': 'driver_id must be a valid UUID v4',
+    'string.base': 'driver_id must be a string',
+  });
 
-export const vehicleIdRule = Joi.string().guid({ version: 'uuidv4' }).allow(null).optional().messages({
-  'string.guid': 'vehicle_id must be a valid UUID v4',
-  'string.base': 'vehicle_id must be a string',
-});
+export const vehicleIdRule = Joi.string()
+  .guid({ version: 'uuidv4' })
+  .allow(null)
+  .optional()
+  .messages({
+    'string.guid': 'vehicle_id must be a valid UUID v4',
+    'string.base': 'vehicle_id must be a string',
+  });
 
 export const reRouteIdRule = Joi.string().guid({ version: 'uuidv4' }).optional().messages({
   'string.guid': 're_route_id must be a valid UUID v4',
@@ -62,7 +70,7 @@ export const bookingTypeRule = enumString(Object.values(BookingType))
     'any.only': `booking_type must be one of [${Object.values(BookingType).join(', ')}]`,
     'any.required': 'booking_type is required',
     'string.base': 'booking_type must be a string',
-  })
+  });
 export const tripStatusRule = enumString(Object.values(TripStatus))
   .required()
   .messages({
@@ -84,7 +92,6 @@ export const cancelReasonRule = enumString([
   'reason_heavy_traffic',
   'reason_customer_not_reachable',
   'reason_other',
-
 ])
   .optional()
   .messages({
@@ -270,31 +277,31 @@ export const tripCodeRule = Joi.string().optional().messages({
 });
 
 export const vehicleModelRule = Joi.string().optional().messages({
-    'string.base': 'vehicle_model must be a string',
+  'string.base': 'vehicle_model must be a string',
 });
 
 export const vehicleTypeRule = enumString(Object.values(VehicleType))
-    .optional()
-    .messages({
-        'any.only': `vehicle_type must be one of [${Object.values(VehicleType).join(', ')}]`,
-        'string.base': 'vehicle_type must be a string',
-    });
+  .optional()
+  .messages({
+    'any.only': `vehicle_type must be one of [${Object.values(VehicleType).join(', ')}]`,
+    'string.base': 'vehicle_type must be a string',
+  });
 
 export const transmissionTypeRule = enumString(Object.values(TransmissionType))
-    .optional()
-    .messages({
-        'any.only': `transmission_type must be one of [${Object.values(TransmissionType).join(', ')}]`,
-        'string.base': 'transmission_type must be a string',
-    });
+  .optional()
+  .messages({
+    'any.only': `transmission_type must be one of [${Object.values(TransmissionType).join(', ')}]`,
+    'string.base': 'transmission_type must be a string',
+  });
 
-export const couponCodeRule = Joi.string().allow('',null).optional().messages({
-    'string.base': 'coupon_code must be a string',
+export const couponCodeRule = Joi.string().allow('', null).optional().messages({
+  'string.base': 'coupon_code must be a string',
 });
 
-export const discountRule = Joi.number().allow('',null).optional().messages({
-    'number.base': 'discount must be a number',
+export const discountRule = Joi.number().allow('', null).optional().messages({
+  'number.base': 'discount must be a number',
 });
 
-export const appliedCouponIdRule = Joi.string().allow('',null).optional().messages({
-    'string.base': 'applied_coupon_id must be a string',
+export const appliedCouponIdRule = Joi.string().allow('', null).optional().messages({
+  'string.base': 'applied_coupon_id must be a string',
 });

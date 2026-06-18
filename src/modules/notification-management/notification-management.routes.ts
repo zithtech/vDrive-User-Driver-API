@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { 
-  dispatchNotification, 
-  getNotifications, 
-  createNotificationRecord, 
-  updateNotificationRecord, 
-  deleteNotificationRecord 
+import {
+  dispatchNotification,
+  getNotifications,
+  createNotificationRecord,
+  updateNotificationRecord,
+  deleteNotificationRecord,
 } from './notification-management.controller';
 import isAuthenticated from '../../shared/authentication';
 

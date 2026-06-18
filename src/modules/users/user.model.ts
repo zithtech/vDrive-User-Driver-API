@@ -36,7 +36,7 @@ export interface User {
     showname?: string;
     address: string;
     lat: number;
-    lng: number
+    lng: number;
   }[];
   emergency_contacts?: EmergencyContact[];
   created_at?: Date;

@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { simulationController } from './simulation.controller';
 
-
 const router = Router();
 
 router.post('/update-location', simulationController.updateLocation);

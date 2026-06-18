@@ -40,7 +40,7 @@ export const UserValidation = {
     settings_preferences: commonSchema.settingsPreferenceSchema.optional(),
     onboarding_status: commonSchema.onboardingStatusRule.optional(),
     referral_code: commonSchema.referralCodeRule.optional(),
-    notes : commonSchema.notesRule.optional(),
+    notes: commonSchema.notesRule.optional(),
     referred_by: Joi.string().allow('', null).optional(),
   })
     .min(1)

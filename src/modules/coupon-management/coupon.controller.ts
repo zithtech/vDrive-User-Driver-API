@@ -28,13 +28,13 @@ export const CouponController = {
           discount_value: coupon.discount_value,
         },
         discount_amount: discount,
-        final_fare: parseFloat(rideAmount) - discount
+        final_fare: parseFloat(rideAmount) - discount,
       });
     } catch (error: any) {
       logger.error(`Error in CouponController.validateCoupon: ${error.message}`);
       return res.status(error.statusCode || 500).json({
         success: false,
-        error: error.message || 'Internal server error'
+        error: error.message || 'Internal server error',
       });
     }
   },
@@ -49,14 +49,14 @@ export const CouponController = {
 
       return res.status(200).json({
         success: true,
-        coupons
+        coupons,
       });
     } catch (error: any) {
       logger.error(`Error in CouponController.getAvailableCoupons: ${error.message}`);
       return res.status(500).json({
         success: false,
-        error: 'Internal server error'
+        error: 'Internal server error',
       });
     }
-  }
+  },
 };

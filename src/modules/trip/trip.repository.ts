@@ -19,8 +19,8 @@ export const TripRepository = {
   async findActiveRequests(bookingType?: string, driverId?: string): Promise<Trip[]> {
     const params: any[] = [];
     // let sql = `
-    //   SELECT t.*, u.full_name AS passenger_name 
-    //   FROM trips t 
+    //   SELECT t.*, u.full_name AS passenger_name
+    //   FROM trips t
     //   LEFT JOIN users u ON t.user_id = u.id
     //   WHERE (
     //     (t.trip_status = 'REQUESTED'`;
@@ -56,7 +56,9 @@ export const TripRepository = {
 
     // Part 2: Rides assigned to or accepted by THIS driver (only if driverId provided)
     if (driverId) {
-      statusConditions.push(`(t.trip_status IN ('ASSIGNED', 'ACCEPTED') AND t.driver_id = $${params.length + 1})`);
+      statusConditions.push(
+        `(t.trip_status IN ('ASSIGNED', 'ACCEPTED') AND t.driver_id = $${params.length + 1})`
+      );
       params.push(driverId);
     }
 
@@ -78,7 +80,6 @@ export const TripRepository = {
     const result = await query(sql, params);
     return result.rows || [];
   },
-
 
   async findById(id: string): Promise<Trip | null> {
     const result = await query(
@@ -119,18 +120,23 @@ export const TripRepository = {
     return result.rows[0] || null;
   },
 
-
- async findByUserId(userId: string, role: string, limit?: number, tab?: string): Promise<{ data: Trip[], total: number }> {
+  async findByUserId(
+    userId: string,
+    role: string,
+    limit?: number,
+    tab?: string
+  ): Promise<{ data: Trip[]; total: number }> {
     let result;
     const limitClause = limit ? ` LIMIT ${limit}` : '';
 
     let tabFilter = '';
     if (tab === 'completed') {
-        tabFilter = "AND t.trip_status = 'COMPLETED'";
+      tabFilter = "AND t.trip_status = 'COMPLETED'";
     } else if (tab === 'cancelled') {
-        tabFilter = "AND t.trip_status IN ('CANCELLED', 'MID_CANCELLED')";
+      tabFilter = "AND t.trip_status IN ('CANCELLED', 'MID_CANCELLED')";
     } else if (tab === 'upcoming') {
-        tabFilter = "AND t.booking_type = 'SCHEDULED' AND t.trip_status IN ('REQUESTED', 'ACCEPTED', 'ARRIVING', 'ARRIVED')";
+      tabFilter =
+        "AND t.booking_type = 'SCHEDULED' AND t.trip_status IN ('REQUESTED', 'ACCEPTED', 'ARRIVING', 'ARRIVED')";
     }
 
     if (role === UserRole.CUSTOMER) {
@@ -174,8 +180,7 @@ export const TripRepository = {
        ORDER BY t.created_at DESC${limitClause};`,
         [userId]
       );
-    }
-    else if (role === UserRole.DRIVER) {
+    } else if (role === UserRole.DRIVER) {
       result = await query(
         `SELECT t.*, 
                 count(*) over() as full_count,
@@ -220,9 +225,9 @@ export const TripRepository = {
 
     const rows = result?.rows || [];
     const total = rows.length > 0 ? parseInt(rows[0].full_count, 10) : 0;
-    
+
     // Remove the full_count from the actual data returned
-    const data = rows.map(row => {
+    const data = rows.map((row) => {
       const { full_count, ...rest } = row;
       return rest;
     });
@@ -231,7 +236,6 @@ export const TripRepository = {
   },
 
   async createTrip(data: Partial<Trip>): Promise<Trip | null> {
-
     const result = await query(
       `
       INSERT INTO trips (user_id, ride_type, service_type,driver_allowance, trip_status, booking_type,is_for_self,passenger_details, original_scheduled_start_time, scheduled_start_time, pickup_lat, pickup_lng, pickup_address, drop_lat, drop_lng, drop_address, distance_km,trip_duration_minutes, base_fare,additional_charges, platform_fee, total_fare, paid_amount, payment_status, vehicle_model, vehicle_type, transmission_type, discount, applied_coupon_id, coupon_code, otp, created_at, updated_at)
@@ -276,7 +280,6 @@ export const TripRepository = {
     return result.rows[0] || null;
   },
 
-
   async updateTrip(trip_id: string, setQuery: string, values: any[]): Promise<Trip | null> {
     const result = await query(
       `UPDATE trips SET ${setQuery}, updated_at = NOW() WHERE trip_id = $${values.length + 1} RETURNING *;`,
@@ -286,9 +289,8 @@ export const TripRepository = {
     return result.rows[0] || null;
   },
 
-
   async findActiveTripByUserId(userId: string): Promise<any> {
-   const result = await query(
+    const result = await query(
       `SELECT 
         t.*, 
         jsonb_build_object(
@@ -330,11 +332,10 @@ export const TripRepository = {
     );
     const rows = result.rows || [];
     return {
-      activeTrips: rows.filter(r => r.booking_type === 'LIVE'),
-      scheduledTrips: rows.filter(r => r.booking_type === 'SCHEDULED')
+      activeTrips: rows.filter((r) => r.booking_type === 'LIVE'),
+      scheduledTrips: rows.filter((r) => r.booking_type === 'SCHEDULED'),
     };
   },
-
 
   async acceptTrip(tripId: string, driverId: string): Promise<Trip | null> {
     const sql = `
@@ -356,18 +357,15 @@ export const TripRepository = {
       return result.rows[0];
     } catch (error) {
       logger.error(`Database Error in acceptTrip: ${error}`);
-      throw new Error("Failed to update trip acceptance in database");
+      throw new Error('Failed to update trip acceptance in database');
     }
   },
 
-
   async getDriverDetails(driverId: string) {
-    const sql = "SELECT * FROM drivers WHERE id = $1";
+    const sql = 'SELECT * FROM drivers WHERE id = $1';
     const result = await query(sql, [driverId]);
     return result.rows[0];
   },
-
-
 
   //Admin
   async getAllTripsWithChanges(): Promise<TripDetailsType[]> {
@@ -435,9 +433,9 @@ export const TripRepository = {
   },
   // async getAllTripsWithChanges(): Promise<TripDetailsType[]> {
   //   const sql = `
-  //     SELECT 
-  //       t.*, 
-  //       u.full_name AS user_name, 
+  //     SELECT
+  //       t.*,
+  //       u.full_name AS user_name,
   //       u.phone_number AS user_phone,
   //       d.full_name AS driver_name,
   //       d.phone_number AS driver_phone,
@@ -466,7 +464,6 @@ export const TripRepository = {
   //   return result.rows;
   // },
 
-
   //TripChanges
   async createTripChanges(data: TripChanges): Promise<Trip | null> {
     const result = await query(
@@ -493,12 +490,16 @@ export const TripRepository = {
       return result.rows[0];
     } catch (error) {
       logger.error(`Database Error in updateTripStatus: ${error}`);
-      throw new Error("Failed to update trip Status in database");
+      throw new Error('Failed to update trip Status in database');
     }
   },
 
-
-  async findActivityByDriverId(driverId: string, from?: string, to?: string, status?: string): Promise<any[]> {
+  async findActivityByDriverId(
+    driverId: string,
+    from?: string,
+    to?: string,
+    status?: string
+  ): Promise<any[]> {
     let sql = `
       SELECT t.*, u.full_name AS passenger_name 
       FROM trips t
@@ -540,7 +541,13 @@ export const TripRepository = {
     return result.rows[0];
   },
 
-  async cancelTrip(tripId: string, tripStatus: string, cancelReason: string, cancelBy: string, notes: string): Promise<Trip | null> {
+  async cancelTrip(
+    tripId: string,
+    tripStatus: string,
+    cancelReason: string,
+    cancelBy: string,
+    notes: string
+  ): Promise<Trip | null> {
     const sql = `UPDATE trips SET trip_status = $2, cancel_reason = $3, cancel_by = $4, notes = $5, updated_at = NOW() WHERE trip_id = $1 RETURNING *;`;
     try {
       const result = await query(sql, [tripId, tripStatus, cancelReason, cancelBy, notes]);
@@ -550,11 +557,10 @@ export const TripRepository = {
       return result.rows[0];
     } catch (error) {
       logger.error(`Database Error in cancelTrip: ${error}`);
-      throw new Error("Failed to cancel trip in database");
+      throw new Error('Failed to cancel trip in database');
     }
   },
 
-  
   async findActiveByDriverId(driverId: string): Promise<Trip | null> {
     const result = await query(
       `SELECT t.*, 
@@ -594,5 +600,5 @@ export const TripRepository = {
       [userId]
     );
     return parseInt(result.rows[0].count, 10);
-  }
+  },
 };

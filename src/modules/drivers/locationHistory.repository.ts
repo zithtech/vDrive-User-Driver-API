@@ -42,7 +42,7 @@ export const LocationHistoryRepository = {
        FROM driver_location_history
        WHERE trip_id = $1
        ORDER BY recorded_at ASC`,
-      [tripId],
+      [tripId]
     );
     return result.rows;
   },
@@ -56,7 +56,7 @@ export const LocationHistoryRepository = {
        FROM driver_location_history
        WHERE trip_id = $1 AND recorded_at BETWEEN $2 AND $3
        ORDER BY recorded_at ASC`,
-      [tripId, from, to],
+      [tripId, from, to]
     );
     return result.rows;
   },
@@ -74,7 +74,7 @@ export const LocationHistoryRepository = {
          ROUND(AVG(speed)::numeric, 2) as avg_speed_mps
        FROM driver_location_history
        WHERE trip_id = $1`,
-      [tripId],
+      [tripId]
     );
     return result.rows[0];
   },
@@ -87,7 +87,7 @@ export const LocationHistoryRepository = {
       `DELETE FROM driver_location_history 
        WHERE recorded_at < NOW() - INTERVAL '1 day' * $1
        RETURNING id`,
-      [days],
+      [days]
     );
     return result.rowCount;
   },

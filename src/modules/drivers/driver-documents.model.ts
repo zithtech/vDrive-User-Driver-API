@@ -1,7 +1,15 @@
 export interface DriverDocument {
   id: string;
   driver_id: string;
-  document_type: 'rc' | 'insurance' | 'vehicle_license' | 'aadhaar_card' | 'driving_license' | 'pan_card' | 'profile_selfie' | 'police_verification';
+  document_type:
+    | 'rc'
+    | 'insurance'
+    | 'vehicle_license'
+    | 'aadhaar_card'
+    | 'driving_license'
+    | 'pan_card'
+    | 'profile_selfie'
+    | 'police_verification';
   document_url?: any;
   status: 'pending' | 'verified' | 'rejected';
   uploaded_at: Date;

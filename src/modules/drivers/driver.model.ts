@@ -63,7 +63,6 @@ export interface CreditUsage {
   createdAt: string;
 }
 
-
 export interface Document {
   documentId: string;
   documentType: string;
@@ -167,14 +166,14 @@ export interface CreateDriverInput {
   documents?: Omit<Document, 'documentId'>[];
   kyc_status?: KYC;
   onboarding_status?:
-  | 'PHONE_VERIFIED'
-  | 'PROFILE_COMPLETED'
-  | 'ADDRESS_COMPLETED'
-  | 'DOCS_SUBMITTED'
-  | 'DOCUMENTS_APPROVED'
-  | 'SUBSCRIPTION_ACTIVE'
-  | 'DOCS_REJECTED'
-  | 'ACTIVE';
+    | 'PHONE_VERIFIED'
+    | 'PROFILE_COMPLETED'
+    | 'ADDRESS_COMPLETED'
+    | 'DOCS_SUBMITTED'
+    | 'DOCUMENTS_APPROVED'
+    | 'SUBSCRIPTION_ACTIVE'
+    | 'DOCS_REJECTED'
+    | 'ACTIVE';
   documents_submitted?: boolean;
   credit?: Credit;
   availability?: Availability;
@@ -191,12 +190,13 @@ export interface CreateDriverInput {
   referred_by?: string;
 }
 
-export interface UpdateDriverInput extends Partial<
-  Omit<
-    CreateDriverInput,
-    'documents' | 'kyc' | 'credit' | 'availability' | 'performance' | 'payments'
-  >
-> {
+export interface UpdateDriverInput
+  extends Partial<
+    Omit<
+      CreateDriverInput,
+      'documents' | 'kyc' | 'credit' | 'availability' | 'performance' | 'payments'
+    >
+  > {
   driverId?: string;
   documents?: Partial<Document>[];
   kyc?: Partial<KYC>;
@@ -205,14 +205,14 @@ export interface UpdateDriverInput extends Partial<
   performance?: Partial<Performance>;
   payments?: Partial<Payments>;
   onboarding_status?:
-  | 'PHONE_VERIFIED'
-  | 'PROFILE_COMPLETED'
-  | 'ADDRESS_COMPLETED'
-  | 'DOCS_SUBMITTED'
-  | 'DOCUMENTS_APPROVED'
-  | 'SUBSCRIPTION_ACTIVE'
-  | 'DOCS_REJECTED'
-  | 'ACTIVE';
+    | 'PHONE_VERIFIED'
+    | 'PROFILE_COMPLETED'
+    | 'ADDRESS_COMPLETED'
+    | 'DOCS_SUBMITTED'
+    | 'DOCUMENTS_APPROVED'
+    | 'SUBSCRIPTION_ACTIVE'
+    | 'DOCS_REJECTED'
+    | 'ACTIVE';
   documents_submitted?: boolean;
   is_trip_verified?: boolean;
   language?: string;

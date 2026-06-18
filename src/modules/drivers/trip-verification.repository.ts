@@ -1,5 +1,9 @@
 import { query } from '../../shared/database';
-import { TripVerification, TripVerificationStatus, ImageVerificationStatus } from './trip-verification.model';
+import {
+  TripVerification,
+  TripVerificationStatus,
+  ImageVerificationStatus,
+} from './trip-verification.model';
 
 export const TripVerificationRepository = {
   async findByDriverId(driverId: string): Promise<TripVerification[]> {
@@ -91,9 +95,9 @@ export const TripVerificationRepository = {
       data.driver_id,
       data.trip_id || null,
       data.selfie_url,
-      data.car_image_url || (data.car_images?.[0] || ''),
+      data.car_image_url || data.car_images?.[0] || '',
       carImagesJson,
-      attemptNumber
+      attemptNumber,
     ]);
     return result.rows[0] as TripVerification;
   },
@@ -193,12 +197,16 @@ export const TripVerificationRepository = {
       paramIndex++;
     }
     if (data.car_image_url) {
-      sets.push(`car_image_url = $${paramIndex}, car_image_status = 'pending', car_image_remarks = NULL`);
+      sets.push(
+        `car_image_url = $${paramIndex}, car_image_status = 'pending', car_image_remarks = NULL`
+      );
       values.push(data.car_image_url);
       paramIndex++;
     }
     if (data.car_images) {
-      sets.push(`car_images = $${paramIndex}, car_image_status = 'pending', car_image_remarks = NULL`);
+      sets.push(
+        `car_images = $${paramIndex}, car_image_status = 'pending', car_image_remarks = NULL`
+      );
       values.push(JSON.stringify(data.car_images));
       paramIndex++;
     }

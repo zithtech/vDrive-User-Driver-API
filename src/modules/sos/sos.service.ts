@@ -22,7 +22,9 @@ export class SosService {
         const activeTrip = await TripRepository.findActiveByDriverId(user_id);
         if (activeTrip) {
           associatedTripId = activeTrip.trip_id;
-          logger.info(`Automatically associated active trip ${associatedTripId} with SOS for driver ${user_id}`);
+          logger.info(
+            `Automatically associated active trip ${associatedTripId} with SOS for driver ${user_id}`
+          );
         }
       }
 
@@ -40,7 +42,7 @@ export class SosService {
   static async getActiveSosWithDetails() {
     const activeEvents = await SosRepository.findAllActiveSos();
     const enrichedEvents = await Promise.all(
-      activeEvents.map(event => this.getEnrichedSosData(event, false))
+      activeEvents.map((event) => this.getEnrichedSosData(event, false))
     );
     return enrichedEvents;
   }
@@ -60,17 +62,19 @@ export class SosService {
           vdrive_id: driver.vdrive_id,
           type: 'driver',
           current_lat: driver.current_lat,
-          current_lng: driver.current_lng
+          current_lng: driver.current_lng,
         };
       }
     } else {
       const user = await UserRepository.findById(user_id, UserStatus.ACTIVE);
-      enrichedUserData = user ? {
-        full_name: user.full_name || `${user.first_name} ${user.last_name}`,
-        phone_number: user.phone_number,
-        vdrive_id: user.user_code,
-        type: 'customer'
-      } : null;
+      enrichedUserData = user
+        ? {
+            full_name: user.full_name || `${user.first_name} ${user.last_name}`,
+            phone_number: user.phone_number,
+            vdrive_id: user.user_code,
+            type: 'customer',
+          }
+        : null;
     }
 
     const trip = currentTripId ? await TripRepository.findById(currentTripId) : null;
@@ -78,13 +82,15 @@ export class SosService {
     const enrichedData = {
       ...sosEvent,
       user: enrichedUserData,
-      trip: trip ? {
-        pickup_address: trip.pickup_address,
-        drop_address: trip.drop_address,
-        status: trip.trip_status
-      } : null,
+      trip: trip
+        ? {
+            pickup_address: trip.pickup_address,
+            drop_address: trip.drop_address,
+            status: trip.trip_status,
+          }
+        : null,
       latitude: enrichedUserData?.current_lat,
-      longitude: enrichedUserData?.current_lng
+      longitude: enrichedUserData?.current_lng,
     };
 
     if (isNewEvent) {
@@ -92,10 +98,10 @@ export class SosService {
       const io = getIO();
       // Confirm to the user/driver
       io.to(`${user_type}_${user_id}`).emit('sos_triggered', sosEvent);
-      
+
       // Notify trip room if applicable
       if (currentTripId) {
-          io.to(`trip_${currentTripId}`).emit('sos_triggered', sosEvent);
+        io.to(`trip_${currentTripId}`).emit('sos_triggered', sosEvent);
       }
 
       // Notify all admins for real-time monitoring
@@ -103,7 +109,11 @@ export class SosService {
 
       // 5. Trigger Webhook to Admin Backend
       try {
-        await this.sendWebhookWithRetry('SOS_TRIGGERED', `${user_type} has triggered an SOS alert!`, enrichedData);
+        await this.sendWebhookWithRetry(
+          'SOS_TRIGGERED',
+          `${user_type} has triggered an SOS alert!`,
+          enrichedData
+        );
         logger.info(`SOS webhook sent to Admin Backend for SOS ID: ${sosEvent?.id}`);
       } catch (error) {
         logger.error('Failed to send SOS webhook to Admin Backend after retries:', error);
@@ -116,7 +126,11 @@ export class SosService {
       // For existing events, we still want to notify admins if they re-trigger
       // Throttled or just send a 'RE-TRIGGERED' event
       try {
-        await this.sendWebhookWithRetry('SOS_TRIGGERED', `${user_type} HAS RE-TRIGGERED AN ACTIVE SOS!`, enrichedData);
+        await this.sendWebhookWithRetry(
+          'SOS_TRIGGERED',
+          `${user_type} HAS RE-TRIGGERED AN ACTIVE SOS!`,
+          enrichedData
+        );
         logger.info(`Re-triggered SOS webhook sent for SOS ID: ${sosEvent?.id}`);
       } catch (error) {
         logger.error('Failed to send re-triggered SOS webhook:', error);
@@ -127,7 +141,9 @@ export class SosService {
   }
 
   static async updateLocation(sos_id: string, latitude: number, longitude: number) {
-    logger.info(`Received SOS location update: sos_id=${sos_id}, lat=${latitude}, lng=${longitude}`);
+    logger.info(
+      `Received SOS location update: sos_id=${sos_id}, lat=${latitude}, lng=${longitude}`
+    );
     await SosRepository.addSosLocation(sos_id, latitude, longitude);
 
     const updatePayload = {
@@ -158,7 +174,7 @@ export class SosService {
     }
 
     await SosRepository.resolveSosEvent(sos_id);
-    
+
     // Notify all parties using safe helpers (won't throw if socket not ready)
     emitToAll('sos_resolved', { sos_id });
     emitToRoom('admins', 'admin_sos_resolved', { sos_id });
@@ -181,14 +197,19 @@ export class SosService {
     }
 
     // Notify Admin Backend
-     try {
+    try {
       await this.sendWebhookWithRetry('SOS_RESOLVED', 'SOS alert has been resolved.', { sos_id });
     } catch (error) {
       logger.error('Failed to send SOS resolve webhook:', error);
     }
   }
 
-  private static async sendWebhookWithRetry(eventType: string, message: string, data: any, retries = 3) {
+  private static async sendWebhookWithRetry(
+    eventType: string,
+    message: string,
+    data: any,
+    retries = 3
+  ) {
     const url = `${config.adminBackendUrl}/api/webhooks/driver-events`;
     const payload = { eventType, message, data };
     const headers = { 'x-api-key': config.internalServiceApiKey };
@@ -200,16 +221,20 @@ export class SosService {
       } catch (error) {
         if (i === retries - 1) throw error;
         logger.warn(`Webhook attempt ${i + 1} failed, retrying...`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1))); // Exponential backoff
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1))); // Exponential backoff
       }
     }
   }
 
   private static async sendSmsToContacts(contacts: any[], sosEvent: any) {
     // Placeholder for actual SMS integration
-    logger.info(`[SMS STUB] Sending SOS alerts to ${contacts.length} trusted contacts for User ID: ${sosEvent.user_id}`);
-    contacts.forEach(contact => {
-      logger.info(`[SMS STUB] Sending to ${contact.phone}: "Emergency! ${contact.name}, someone you know has triggered an SOS. Track: [link]"`);
+    logger.info(
+      `[SMS STUB] Sending SOS alerts to ${contacts.length} trusted contacts for User ID: ${sosEvent.user_id}`
+    );
+    contacts.forEach((contact) => {
+      logger.info(
+        `[SMS STUB] Sending to ${contact.phone}: "Emergency! ${contact.name}, someone you know has triggered an SOS. Track: [link]"`
+      );
     });
   }
 }

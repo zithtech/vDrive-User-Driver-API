@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { PromoController } from './promo.controller';
-import { validatePromoValidator, createPromoValidator, updatePromoValidator } from './promo.validator';
+import {
+  validatePromoValidator,
+  createPromoValidator,
+  updatePromoValidator,
+} from './promo.validator';
 
 const router = Router();
 

@@ -10,7 +10,7 @@ interface AuthRequest extends Request {
 const isAuthenticated = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     // Perfect method: Bearer token in Authorization header
-    let token = req.headers.authorization?.replace('Bearer ', '');
+    const token = req.headers.authorization?.replace('Bearer ', '');
 
     if (!token) {
       return res.status(401).json({

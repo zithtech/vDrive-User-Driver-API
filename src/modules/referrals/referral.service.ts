@@ -18,7 +18,8 @@ export const ReferralService = {
       }
 
       const randomPart = crypto.randomBytes(4).toString('hex').toUpperCase();
-      const hash = crypto.createHash('sha256')
+      const hash = crypto
+        .createHash('sha256')
         .update(userId)
         .digest('hex')
         .substring(0, 4)
@@ -51,7 +52,8 @@ export const ReferralService = {
         return { valid: false, error: 'Referral code is inactive' };
       }
 
-      const existingReferral = await ReferralRepository.getReferralRelationshipByReferred(refereeUserId);
+      const existingReferral =
+        await ReferralRepository.getReferralRelationshipByReferred(refereeUserId);
 
       if (existingReferral) {
         return { valid: false, error: 'This account already used a referral code' };
@@ -107,7 +109,8 @@ export const ReferralService = {
    */
   async applyReferralDiscount(refereeUserId: string, minRideAmount = 0, tripId?: string) {
     try {
-      const relationship = await ReferralRepository.getReferralRelationshipByReferred(refereeUserId);
+      const relationship =
+        await ReferralRepository.getReferralRelationshipByReferred(refereeUserId);
 
       if (!relationship || relationship.status !== 'PENDING') {
         return { applied: false, error: 'No valid referral found' };
@@ -115,7 +118,7 @@ export const ReferralService = {
 
       // Fetch dynamic referral configuration for Customers
       const config = await ReferralRepository.getActiveConfig('CUSTOMER');
-      
+
       let discountValue = 50; // Default fallback
       let discountType = 'PERCENTAGE'; // Default fallback
 
@@ -137,7 +140,7 @@ export const ReferralService = {
         discountType,
         discountValue,
         relationshipId,
-        referrerId
+        referrerId,
       };
     } catch (error) {
       logger.error('Error applying referral discount:', error);
@@ -150,25 +153,27 @@ export const ReferralService = {
    */
   async completeReferral(relationshipId: string, refereeUserId: string, rideAmount: number) {
     try {
-      // For now, defaulting to CUSTOMER configuration. 
+      // For now, defaulting to CUSTOMER configuration.
       // In a more advanced setup, we would determine the user type from the relationship.
       const config = await ReferralRepository.getActiveConfig('CUSTOMER');
-      
+
       let REFERRER_REWARD = 200; // Default fallback
-      let REFEREE_REWARD = 100;  // Default fallback
+      let REFEREE_REWARD = 100; // Default fallback
 
       if (config) {
-        REFERRER_REWARD = config.referrer_reward_type === 'PERCENTAGE' 
-          ? (Number(rideAmount) * Number(config.referrer_reward)) / 100 
-          : Number(config.referrer_reward);
-          
-        REFEREE_REWARD = config.referee_reward_type === 'PERCENTAGE' 
-          ? (Number(rideAmount) * Number(config.referee_reward)) / 100 
-          : Number(config.referee_reward);
+        REFERRER_REWARD =
+          config.referrer_reward_type === 'PERCENTAGE'
+            ? (Number(rideAmount) * Number(config.referrer_reward)) / 100
+            : Number(config.referrer_reward);
+
+        REFEREE_REWARD =
+          config.referee_reward_type === 'PERCENTAGE'
+            ? (Number(rideAmount) * Number(config.referee_reward)) / 100
+            : Number(config.referee_reward);
       }
 
       return await ReferralRepository.completeReferralTransaction(
-        relationshipId, 
+        relationshipId,
         refereeUserId,
         REFERRER_REWARD,
         REFEREE_REWARD
@@ -213,5 +218,5 @@ export const ReferralService = {
       logger.error('Error checking referral usage:', error);
       throw error;
     }
-  }
+  },
 };

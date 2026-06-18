@@ -9,7 +9,12 @@ import { ActorType, TripEventType } from '../../enums/triptransaction.enums';
 import { tripTransactionLogger } from '../triptransactions/triptransactionlogger';
 import { DriverNotifications, UserNotifications } from '../notifications';
 import { CancelBy, CancelReason, TripStatus } from '../../enums/trip.enums';
-import { broadcastTripUpdate, emitToRoom, emitTripRemoved, emitTripUpdate } from '../../sockets/socket';
+import {
+  broadcastTripUpdate,
+  emitToRoom,
+  emitTripRemoved,
+  emitTripUpdate,
+} from '../../sockets/socket';
 import { DriverRepository } from '../drivers/driver.repository';
 import { DriverAvailabilityStatus } from '../drivers/driver.model';
 import { TripSocketEvent } from '../../sockets/socket.types';
@@ -33,7 +38,6 @@ export const TripService = {
     return await TripRepository.findActiveRequests(bookingType, driverId);
   },
 
-  
   async getAllTripsWithChanges() {
     return await TripRepository.getAllTripsWithChanges();
   },
@@ -57,26 +61,29 @@ export const TripService = {
     // Generate a 4-digit OTP
     // data.otp = Math.floor(1000 + Math.random() * 9000).toString();
 
-      // First calculate full fare BEFORE discount
-  const baseFare = data.base_fare!;
-  const allowance = data.driver_allowance ?? 0;
-  const waitingCharge = data.waiting_charges ?? 0;
+    // First calculate full fare BEFORE discount
+    const baseFare = data.base_fare!;
+    const allowance = data.driver_allowance ?? 0;
+    const waitingCharge = data.waiting_charges ?? 0;
 
-  const fullFare = baseFare + allowance + waitingCharge;
+    const fullFare = baseFare + allowance + waitingCharge;
 
-
-  data.total_fare = fullFare;
+    data.total_fare = fullFare;
     // 🏷️ Handle Coupon Application
     if (couponCode) {
       try {
-        const coupon = await CouponService.validateCoupon(couponCode, data.user_id!, data.base_fare!);
+        const coupon = await CouponService.validateCoupon(
+          couponCode,
+          data.user_id!,
+          data.base_fare!
+        );
         const discountAmount = CouponService.calculateDiscount(coupon, data.base_fare!);
-        
+
         data.applied_coupon_id = coupon.id;
         data.coupon_code = couponCode;
         data.discount = discountAmount;
         data.total_fare = fullFare! - discountAmount;
-        
+
         logger.info(`Coupon ${couponCode} applied to new trip. Discount: ${discountAmount}`);
       } catch (error: any) {
         logger.warn(`Failed to apply coupon ${couponCode}: ${error.message}`);
@@ -86,10 +93,10 @@ export const TripService = {
       }
     }
     let user: any = null;
-    if(data.user_id){
-      user = await UserRepository.findById(data.user_id ,UserStatus.ACTIVE);
-      if(user){
-       data.otp = user.otp
+    if (data.user_id) {
+      user = await UserRepository.findById(data.user_id, UserStatus.ACTIVE);
+      if (user) {
+        data.otp = user.otp;
       }
     }
 
@@ -122,7 +129,6 @@ export const TripService = {
     }
 
     return trip;
-    
   },
 
   async updateTrip(id: string, data: Partial<Trip>) {
@@ -138,11 +144,12 @@ export const TripService = {
       throw { statusCode: 500, message: 'Update trip failed' };
     }
     // ── 3. Resolve actor from context ─────────────────────────────────────────
-    const actor_type = data.cancel_by === 'USER'
-      ? ActorType.User
-      : data.cancel_by === 'DRIVER'
-        ? ActorType.Driver
-        : ActorType.Admin;
+    const actor_type =
+      data.cancel_by === 'USER'
+        ? ActorType.User
+        : data.cancel_by === 'DRIVER'
+          ? ActorType.Driver
+          : ActorType.Admin;
 
     // ── 5. Log — state machine handles everything ─────────────────────────────
     await tripTransactionLogger.logAll({
@@ -156,7 +163,6 @@ export const TripService = {
 
     return trip;
   },
-
 
   async createTripChanges(data: TripChanges) {
     const tripChanges = await TripRepository.createTripChanges(data);
@@ -173,10 +179,9 @@ export const TripService = {
     }
     return {
       activeTrips: trips.activeTrips,
-      scheduledTrips: trips.scheduledTrips
+      scheduledTrips: trips.scheduledTrips,
     };
   },
-
 
   async requestRide(io: Server, tripData: any, driverId: string) {
     // Find driver's private room
@@ -191,7 +196,7 @@ export const TripService = {
       pickup: tripData.pickup_address,
       drop: tripData.drop_address,
       fare: tripData.fare,
-      passengerName: tripData.user_name
+      passengerName: tripData.user_name,
     });
 
     // ✅ Also send Push Notification
@@ -266,7 +271,7 @@ export const TripService = {
 
       // Update Trip
       await TripRepository.acceptTrip(tripId, driverId);
-     
+
       // Update Driver
       await DriverRepository.update(driverId, {
         availability: {
@@ -280,7 +285,6 @@ export const TripService = {
 
     // Broadcast update via Socket.IO
     // broadcastTripUpdate(tripId, { status: TripStatus.ACCEPTED, type: 'trip_updated', trip: updatedTrip });
-
 
     try {
       emitTripUpdate(tripId, TripSocketEvent.TRIP_ACCEPTED, {
@@ -327,12 +331,10 @@ export const TripService = {
       );
       return updatedTrip;
     } catch (error) {
-      logger.error("Acceptance Error in Service:", error);
+      logger.error('Acceptance Error in Service:', error);
       throw error;
     }
   },
-
-
 
   async requestRideToMultipleDrivers(io: Server, tripData: any, drivers: any[]) {
     const tripId = tripData[0].trip_id;
@@ -350,7 +352,7 @@ export const TripService = {
     const broadcast = () => {
       logger.info(`📡 Broadcasting Trip ${tripId} to ${drivers.length} drivers`);
 
-      drivers.forEach(driver => {
+      drivers.forEach((driver) => {
         // Robust parsing of passenger details if it's a string
         let passengerDetails = tripData[0].passenger_details;
         if (typeof passengerDetails === 'string') {
@@ -366,7 +368,7 @@ export const TripService = {
           pickup: tripData[0].pickup_address,
           drop: tripData[0].drop_address,
           fare: tripData[0].total_fare,
-          passengerName: passengerDetails?.name || tripData[0].passenger_name || "Passenger",
+          passengerName: passengerDetails?.name || tripData[0].passenger_name || 'Passenger',
           ride_type: tripData[0].ride_type,
           booking_type: tripData[0].booking_type,
           scheduled_start_time: tripData[0].scheduled_start_time,
@@ -384,7 +386,9 @@ export const TripService = {
           createdAt: new Date().toISOString(), // 🕒 Time sync for background/cold-start
         };
 
-        logger.info(`📤 Sending NEW_TRIP_REQUEST to driver_${driver.id}: ${JSON.stringify(payload)}`);
+        logger.info(
+          `📤 Sending NEW_TRIP_REQUEST to driver_${driver.id}: ${JSON.stringify(payload)}`
+        );
         emitToRoom(`driver_${driver.id}`, TripSocketEvent.NEW_TRIP_REQUEST, payload);
 
         // ✅ Also send Push Notification (Only on first broadcast to avoid spamming)
@@ -395,13 +399,15 @@ export const TripService = {
             tripData[0].pickup_address,
             tripData[0].drop_address,
             {
-                fare: String(tripData[0].total_fare),
-                passengerName: passengerDetails?.name || tripData[0].passenger_name || "Passenger",
-                createdAt: payload.createdAt,
-                pickup_lat: String(tripData[0].pickup_lat),
-                pickup_lng: String(tripData[0].pickup_lng),
+              fare: String(tripData[0].total_fare),
+              passengerName: passengerDetails?.name || tripData[0].passenger_name || 'Passenger',
+              createdAt: payload.createdAt,
+              pickup_lat: String(tripData[0].pickup_lat),
+              pickup_lng: String(tripData[0].pickup_lng),
             }
-          ).catch(err => logger.error(`FCM Broadcast Error for driver ${driver.id}: ${err.message}`));
+          ).catch((err) =>
+            logger.error(`FCM Broadcast Error for driver ${driver.id}: ${err.message}`)
+          );
         }
       });
     };
@@ -423,10 +429,9 @@ export const TripService = {
         }
 
         // Check DB
-        const result = await query(
-          "SELECT trip_status FROM trips WHERE trip_id = $1 LIMIT 1",
-          [tripId]
-        );
+        const result = await query('SELECT trip_status FROM trips WHERE trip_id = $1 LIMIT 1', [
+          tripId,
+        ]);
 
         const status = result.rows[0]?.trip_status;
 
@@ -441,9 +446,8 @@ export const TripService = {
         // Re-broadcast
         logger.info(`🔄 Trip ${tripId} still pending. Re-sending... Retry ${retries}`);
         broadcast();
-
       } catch (error) {
-        logger.error("Postgres Error:", error);
+        logger.error('Postgres Error:', error);
       }
     }, RETRY_INTERVAL);
 
@@ -455,9 +459,9 @@ export const TripService = {
 
   async updateTripStatus(io: Server, tripId: string, tripStatus: string) {
     const previousSnapshot = await TripRepository.findById(tripId);
-    const trip = await TripRepository.updateTripStatus(tripId, tripStatus)
+    const trip = await TripRepository.updateTripStatus(tripId, tripStatus);
     if (!trip) {
-      throw new Error("Trip not found");
+      throw new Error('Trip not found');
     }
     await TripTransactionService.logEvent({
       trip_id: trip.trip_id,
@@ -470,11 +474,17 @@ export const TripService = {
       metadata: { driver_id: trip.driver_id },
     });
     // emitTripUpdate(tripId, TripSocketEvent.TRIP_STATUS_CHANGED, { tripId, status: trip.trip_status })
-    broadcastTripUpdate(tripId, { status: trip.trip_status, type: 'trip_updated', trip: trip })
+    broadcastTripUpdate(tripId, { status: trip.trip_status, type: 'trip_updated', trip: trip });
     return trip;
   },
 
-  async cancelTrip(tripId: string, tripStatus: string, cancelReason: CancelReason, cancelBy: CancelBy, notes: string) {
+  async cancelTrip(
+    tripId: string,
+    tripStatus: string,
+    cancelReason: CancelReason,
+    cancelBy: CancelBy,
+    notes: string
+  ) {
     // ─── 1. FETCH TRIP ───────────────────────────────────────────────
     const trip = await TripRepository.findById(tripId);
     if (!trip) throw { statusCode: 404, message: 'Trip not found' };
@@ -502,7 +512,7 @@ export const TripService = {
       CancelReason.OTHER,
     ];
 
-   const userMidTripReasons = [
+    const userMidTripReasons = [
       CancelReason.CHANGED_MY_MIND,
       CancelReason.UNSAFE_DRIVING,
       CancelReason.DRIVER_BEHAVIOR,
@@ -517,25 +527,17 @@ export const TripService = {
       CancelReason.OTHER,
     ];
 
-
     if (cancelBy === CancelBy.DRIVER) {
       // Driver CANNOT cancel a LIVE trip unless it's an emergency
-      if (
-        trip.trip_status === TripStatus.LIVE &&
-        !midTripReasons.includes(cancelReason)
-      ) {
+      if (trip.trip_status === TripStatus.LIVE && !midTripReasons.includes(cancelReason)) {
         throw {
           statusCode: 400,
-          message:
-            'Driver can only cancel a live trip for emergencies or vehicle problems.',
+          message: 'Driver can only cancel a live trip for emergencies or vehicle problems.',
         };
       }
     } else if (cancelBy === CancelBy.USER) {
       // User CANNOT cancel a LIVE trip unless valid mid-trip reason
-      if (
-        trip.trip_status === TripStatus.LIVE &&
-        !userMidTripReasons.includes(cancelReason)
-      ) {
+      if (trip.trip_status === TripStatus.LIVE && !userMidTripReasons.includes(cancelReason)) {
         throw {
           statusCode: 400,
           message:
@@ -563,20 +565,18 @@ export const TripService = {
 
     const mappedReason =
       CANCELLATION_REASON_MAP[cancelReason] ??
-      (Object.values(CancelReason).includes(cancelReason)
-        ? cancelReason
-        : CancelReason.OTHER);
+      (Object.values(CancelReason).includes(cancelReason) ? cancelReason : CancelReason.OTHER);
 
     // ─── 5. DETERMINE NEW STATUS ─────────────────────────────────────
     const newStatus =
       trip.trip_status === TripStatus.LIVE
-        ? TripStatus.MID_CANCELLED  // mid-trip cancellation
-        : TripStatus.CANCELLED;     // pre-trip cancellation
+        ? TripStatus.MID_CANCELLED // mid-trip cancellation
+        : TripStatus.CANCELLED; // pre-trip cancellation
 
     // ─── 6. PERSIST CANCELLATION ─────────────────────────────────────
     const updatedTrip = await TripRepository.cancelTrip(
       tripId,
-      newStatus,       // ✅ use computed status, not raw tripStatus from request
+      newStatus, // ✅ use computed status, not raw tripStatus from request
       mappedReason,
       cancelBy,
       notes
@@ -604,19 +604,15 @@ export const TripService = {
 
     // ─── 8. SEND NOTIFICATIONS ──────────────────────────────────────
     try {
-
       const userfcmtoken = trip.user_id ? await UserRepository.getFcmTokenById(trip.user_id) : null;
-      const driverfcmtoken = trip.driver_id ? await DriverRepository.getFcmTokenById(trip.driver_id) : null;
+      const driverfcmtoken = trip.driver_id
+        ? await DriverRepository.getFcmTokenById(trip.driver_id)
+        : null;
 
       if (cancelBy === CancelBy.DRIVER) {
         // Notify USER that driver cancelled
         if (userfcmtoken) {
-          await UserNotifications.rideCancelled(
-            userfcmtoken,
-            tripId,
-            mappedReason,
-            cancelBy
-          );
+          await UserNotifications.rideCancelled(userfcmtoken, tripId, mappedReason, cancelBy);
         }
         if (driverfcmtoken) {
           await DriverNotifications.bookingCancelled(
@@ -629,38 +625,18 @@ export const TripService = {
       } else if (cancelBy === CancelBy.USER) {
         // Notify DRIVER that user cancelled
         if (driverfcmtoken) {
-          await DriverNotifications.rideCancelled(
-            driverfcmtoken,
-            tripId,
-            mappedReason,
-            cancelBy
-          );
+          await DriverNotifications.rideCancelled(driverfcmtoken, tripId, mappedReason, cancelBy);
         }
         if (userfcmtoken) {
-          await UserNotifications.bookingCancelled(
-            userfcmtoken,
-            tripId,
-            mappedReason,
-            cancelBy
-          );
+          await UserNotifications.bookingCancelled(userfcmtoken, tripId, mappedReason, cancelBy);
         }
       } else if (cancelBy === CancelBy.ADMIN) {
         // Notify BOTH user and driver
         if (userfcmtoken) {
-          await UserNotifications.rideCancelled(
-            userfcmtoken,
-            tripId,
-            mappedReason,
-            cancelBy
-          );
+          await UserNotifications.rideCancelled(userfcmtoken, tripId, mappedReason, cancelBy);
         }
         if (driverfcmtoken) {
-          await DriverNotifications.rideCancelled(
-            driverfcmtoken,
-            tripId,
-            mappedReason,
-            cancelBy
-          );
+          await DriverNotifications.rideCancelled(driverfcmtoken, tripId, mappedReason, cancelBy);
         }
       }
     } catch (err: any) {
@@ -702,7 +678,6 @@ export const TripService = {
     return updatedTrip;
   },
 
-
   async startTrip(tripId: string) {
     const trip = await TripRepository.findById(tripId);
     if (!trip) throw { statusCode: 404, message: 'Trip not found' };
@@ -713,7 +688,10 @@ export const TripService = {
     if (trip.trip_status === TripStatus.VERIFICATION_PENDING) {
       // Allow - this is called from the verification approval flow
       logger.info(`Starting trip ${tripId} after verification approval`);
-    } else if (trip.trip_status !== TripStatus.ARRIVED && trip.trip_status !== TripStatus.ACCEPTED) {
+    } else if (
+      trip.trip_status !== TripStatus.ARRIVED &&
+      trip.trip_status !== TripStatus.ACCEPTED
+    ) {
       // Block if status is not a valid pre-start status
       if (trip.trip_status === TripStatus.LIVE) {
         // Already started, return current state
@@ -746,12 +724,14 @@ export const TripService = {
 
     try {
       const fcmToken = trip.user_id ? await UserRepository.getFcmTokenById(trip.user_id) : null;
-      const driverfcmtoken = trip.driver_id ? await DriverRepository.getFcmTokenById(trip.driver_id) : null;
+      const driverfcmtoken = trip.driver_id
+        ? await DriverRepository.getFcmTokenById(trip.driver_id)
+        : null;
       if (fcmToken) {
-        await UserNotifications.rideStarted(fcmToken, trip.trip_id || "");
+        await UserNotifications.rideStarted(fcmToken, trip.trip_id || '');
       }
       if (driverfcmtoken) {
-        await DriverNotifications.rideStarted(driverfcmtoken, trip.trip_id || "");
+        await DriverNotifications.rideStarted(driverfcmtoken, trip.trip_id || '');
       }
     } catch (err: any) {
       logger.error(`Failed to notify user about ride start: ${err.message}`);
@@ -810,24 +790,37 @@ export const TripService = {
       await DriverRepository.update(driverId, {
         availability: {
           ...driver?.availability,
-          status: upcoming.rows.length > 0 ? DriverAvailabilityStatus.HAS_UPCOMING_SCHEDULED : DriverAvailabilityStatus.ONLINE,
+          status:
+            upcoming.rows.length > 0
+              ? DriverAvailabilityStatus.HAS_UPCOMING_SCHEDULED
+              : DriverAvailabilityStatus.ONLINE,
         },
       });
 
       // 🏆 Referral Reward Trigger
       // Check if this was the driver's first trip and process referral if applicable
-      DriverReferralService.processReferralReward(driverId).catch(err => {
+      DriverReferralService.processReferralReward(driverId).catch((err) => {
         logger.error('Error processing referral reward:', err);
       });
     }
     try {
       const fcmToken = trip.user_id ? await UserRepository.getFcmTokenById(trip.user_id) : null;
-      const driverfcmtoken = trip.driver_id ? await DriverRepository.getFcmTokenById(trip.driver_id) : null;
+      const driverfcmtoken = trip.driver_id
+        ? await DriverRepository.getFcmTokenById(trip.driver_id)
+        : null;
       if (fcmToken) {
-        await UserNotifications.rideCompleted(fcmToken, trip.trip_id || "", String(trip.total_fare || 0));
+        await UserNotifications.rideCompleted(
+          fcmToken,
+          trip.trip_id || '',
+          String(trip.total_fare || 0)
+        );
       }
       if (driverfcmtoken) {
-        await DriverNotifications.rideCompleted(driverfcmtoken, trip.trip_id || "", String(trip.total_fare || 0));
+        await DriverNotifications.rideCompleted(
+          driverfcmtoken,
+          trip.trip_id || '',
+          String(trip.total_fare || 0)
+        );
       }
     } catch (err: any) {
       logger.error(`Failed to notify user about ride completion: ${err.message}`);
@@ -837,10 +830,17 @@ export const TripService = {
     try {
       if (trip.user_id) {
         const rideCount = await TripRepository.getCompletedRideCount(trip.user_id);
-        if (rideCount === 1) { // First completed ride
-          const relationship = await ReferralRepository.getReferralRelationshipByReferred(trip.user_id);
+        if (rideCount === 1) {
+          // First completed ride
+          const relationship = await ReferralRepository.getReferralRelationshipByReferred(
+            trip.user_id
+          );
           if (relationship && relationship.status === 'PENDING') {
-            await ReferralService.completeReferral(relationship.id, trip.user_id, trip.total_fare || 0);
+            await ReferralService.completeReferral(
+              relationship.id,
+              trip.user_id,
+              trip.total_fare || 0
+            );
             logger.info(`Referral reward processed for user ${trip.user_id} on their first ride.`);
           }
         }
@@ -893,7 +893,7 @@ export const TripService = {
     try {
       const fcmToken = await UserRepository.getFcmTokenById(trip.user_id);
       if (fcmToken) {
-        await UserNotifications.driverArriving(fcmToken, driver?.full_name || "Driver", tripId);
+        await UserNotifications.driverArriving(fcmToken, driver?.full_name || 'Driver', tripId);
       }
     } catch (err: any) {
       logger.error(`Failed to notify user about driver arriving: ${err.message}`);
@@ -927,7 +927,7 @@ export const TripService = {
     try {
       const fcmToken = await UserRepository.getFcmTokenById(trip.user_id);
       if (fcmToken) {
-        await UserNotifications.driverArrived(fcmToken, driver?.full_name || "Driver", tripId);
+        await UserNotifications.driverArrived(fcmToken, driver?.full_name || 'Driver', tripId);
       }
     } catch (err: any) {
       logger.error(`Failed to notify user about driver arrival: ${err.message}`);
@@ -945,11 +945,10 @@ export const TripService = {
       });
     } catch (err: any) {
       logger.error(`Failed to emit trip arrival: ${err.message}`);
-    } 
+    }
 
     return updatedTrip;
   },
-  
 
   async destinationReachedTrip(tripId: string) {
     const trip = await TripRepository.findById(tripId);
@@ -964,7 +963,7 @@ export const TripService = {
     try {
       const fcmToken = await UserRepository.getFcmTokenById(trip.user_id);
       if (fcmToken) {
-        await UserNotifications.destinationReached(fcmToken, driver?.full_name || "Driver", tripId);
+        await UserNotifications.destinationReached(fcmToken, driver?.full_name || 'Driver', tripId);
       }
     } catch (err: any) {
       logger.error(`Failed to notify user about driver arrival: ${err.message}`);
@@ -982,7 +981,7 @@ export const TripService = {
       });
     } catch (err: any) {
       logger.error(`Failed to emit trip arrival: ${err.message}`);
-    } 
+    }
 
     return updatedTrip;
   },
@@ -1012,9 +1011,12 @@ export const TripService = {
       if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
       if (trip.trip_status !== TripStatus.REQUESTED && trip.trip_status !== TripStatus.ASSIGNED) {
-         // If it's already assigned to this driver, that's fine (idempotent)
-         if (trip.driver_id === driverId) return trip;
-         throw { statusCode: 400, message: `Trip is no longer available (Status: ${trip.trip_status})` };
+        // If it's already assigned to this driver, that's fine (idempotent)
+        if (trip.driver_id === driverId) return trip;
+        throw {
+          statusCode: 400,
+          message: `Trip is no longer available (Status: ${trip.trip_status})`,
+        };
       }
 
       // 🔍 3. Verify Driver Availability
@@ -1034,9 +1036,10 @@ export const TripService = {
       await DriverRepository.update(driverId, {
         availability: {
           ...driver.availability,
-          status: trip.booking_type === 'SCHEDULED' 
-            ? DriverAvailabilityStatus.HAS_UPCOMING_SCHEDULED 
-            : DriverAvailabilityStatus.ON_TRIP,
+          status:
+            trip.booking_type === 'SCHEDULED'
+              ? DriverAvailabilityStatus.HAS_UPCOMING_SCHEDULED
+              : DriverAvailabilityStatus.ON_TRIP,
         },
       });
 
@@ -1048,10 +1051,10 @@ export const TripService = {
       try {
         const { emitToRoom } = require('../../sockets/socket');
         const { TripSocketEvent } = require('../../sockets/socket.types');
-        
+
         const roomName = `driver_${String(driverId)}`;
         logger.info(`[SOCKET] Emitting TRIP_ASSIGNED to ${roomName} for trip ${tripId}`);
-        
+
         emitToRoom(roomName, TripSocketEvent.TRIP_ASSIGNED, {
           ...updatedTrip,
           type: 'TRIP_ASSIGNED',
@@ -1062,7 +1065,7 @@ export const TripService = {
         // 7. FCM for Push Notification/Background wake
         const { NotificationService } = require('../notifications/notification.service');
         const passenger: any = updatedTrip?.user_details || {};
-        
+
         await NotificationService.sendNotificationToDriver(
           driverId,
           'Ride Assigned to You',

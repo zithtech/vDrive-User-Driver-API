@@ -26,21 +26,27 @@ export const DriverService = {
     // Trigger webhook asynchronously for Admin App real-time notifications
     try {
       const webhookUrl = `${config.adminBackendUrl}/api/webhooks/driver-events`;
-      axios.post(webhookUrl, {
-        eventType: 'NEW_DRIVER',
-        message: `A new driver named ${driver.full_name} has registered.`,
-        data: driver
-      }, {
-        headers: { 'x-api-key': config.internalServiceApiKey }
-      }).catch(err => logger.error(`Webhook trigger failed: ${err.message}`));
+      axios
+        .post(
+          webhookUrl,
+          {
+            eventType: 'NEW_DRIVER',
+            message: `A new driver named ${driver.full_name} has registered.`,
+            data: driver,
+          },
+          {
+            headers: { 'x-api-key': config.internalServiceApiKey },
+          }
+        )
+        .catch((err) => logger.error(`Webhook trigger failed: ${err.message}`));
     } catch (e) {
-      // Ignore 
+      // Ignore
     }
 
     return driver;
   },
 
-   async updateDriver(id: string, driverData: UpdateDriverInput): Promise<Driver> {
+  async updateDriver(id: string, driverData: UpdateDriverInput): Promise<Driver> {
     const currentDriver = await DriverRepository.findById(id);
     if (!currentDriver) {
       throw { statusCode: 404, message: 'Driver not found' };
@@ -71,22 +77,32 @@ export const DriverService = {
     // or if the payload explicitly requests it.
     if (driverData.address) {
       // Only move forward to ADDRESS_COMPLETED if currently lower
-      if (nextStatus === DriverOnboardingStatus.PHONE_VERIFIED || nextStatus === DriverOnboardingStatus.PROFILE_COMPLETED || !nextStatus) {
+      if (
+        nextStatus === DriverOnboardingStatus.PHONE_VERIFIED ||
+        nextStatus === DriverOnboardingStatus.PROFILE_COMPLETED ||
+        !nextStatus
+      ) {
         nextStatus = DriverOnboardingStatus.ADDRESS_COMPLETED;
-        
+
         // Trigger webhook for Admin App real-time notifications
         try {
           const webhookUrl = `${config.adminBackendUrl}/api/webhooks/driver-events`;
           const driverName = currentDriver.full_name || driverData.full_name || 'A driver';
-          axios.post(webhookUrl, {
-            eventType: 'DRIVER_PROFILE_COMPLETED',
-            message: `Driver ${driverName} completed profile setup.`,
-            data: driverData
-          }, {
-            headers: { 'x-api-key': config.internalServiceApiKey }
-          }).catch(err => logger.error(`Webhook trigger failed: ${err.message}`));
+          axios
+            .post(
+              webhookUrl,
+              {
+                eventType: 'DRIVER_PROFILE_COMPLETED',
+                message: `Driver ${driverName} completed profile setup.`,
+                data: driverData,
+              },
+              {
+                headers: { 'x-api-key': config.internalServiceApiKey },
+              }
+            )
+            .catch((err) => logger.error(`Webhook trigger failed: ${err.message}`));
         } catch (e) {
-          // Ignore 
+          // Ignore
         }
       }
     }
@@ -100,7 +116,7 @@ export const DriverService = {
         DriverOnboardingStatus.ADDRESS_COMPLETED,
         DriverOnboardingStatus.DOCS_SUBMITTED,
         DriverOnboardingStatus.DOCUMENTS_APPROVED,
-        DriverOnboardingStatus.ACTIVE
+        DriverOnboardingStatus.ACTIVE,
       ];
       const currentIdx = order.indexOf(nextStatus);
       const requestedIdx = order.indexOf(driverData.onboarding_status as DriverOnboardingStatus);
@@ -116,17 +132,20 @@ export const DriverService = {
       try {
         const existingReferral = await DriverReferralRepository.findByRefereeId(id, 'DRIVER');
         if (!existingReferral) {
-          const referrerId = await DriverReferralRepository.findByCode(driverData.referred_by, 'DRIVER');
+          const referrerId = await DriverReferralRepository.findByCode(
+            driverData.referred_by,
+            'DRIVER'
+          );
           if (referrerId && referrerId !== id) {
             await DriverReferralRepository.createReferral({
               referrer_id: referrerId,
               referee_id: id,
               referral_type: 'DRIVER',
-              status: 'PENDING'
+              status: 'PENDING',
             });
             logger.info(`Referral created: driver ${id} referred by ${referrerId}`);
-            
-            // IMPORTANT: Update driverData.referred_by to the referrer's UUID 
+
+            // IMPORTANT: Update driverData.referred_by to the referrer's UUID
             // so it can be stored correctly in the 'drivers' table
             driverData.referred_by = referrerId;
           } else {
@@ -166,15 +185,19 @@ export const DriverService = {
         }
 
         if (title && body) {
-          notificationService.sendPushNotification(driver.fcm_token, {
-            title,
-            body,
-            data: {
-              type,
-              status: driverData.status,
-              status_reason: driverData.status_reason || ''
-            }
-          }).catch(err => logger.error(`Failed to send status update notification: ${err.message}`));
+          notificationService
+            .sendPushNotification(driver.fcm_token, {
+              title,
+              body,
+              data: {
+                type,
+                status: driverData.status,
+                status_reason: driverData.status_reason || '',
+              },
+            })
+            .catch((err) =>
+              logger.error(`Failed to send status update notification: ${err.message}`)
+            );
         }
       }
     }
@@ -190,7 +213,12 @@ export const DriverService = {
     return driver;
   },
 
-  async getAllDrivers(limit: number = 50, offset: number = 0, status?: string, onboardingStatus?: string): Promise<Driver[]> {
+  async getAllDrivers(
+    limit: number = 50,
+    offset: number = 0,
+    status?: string,
+    onboardingStatus?: string
+  ): Promise<Driver[]> {
     return await DriverRepository.findAll(limit, offset, status, onboardingStatus);
   },
 
@@ -244,7 +272,7 @@ export const DriverService = {
       // 2. Activate driver account
       const kycData = JSON.stringify({
         overallStatus: 'verified',
-        verifiedAt: new Date().toISOString()
+        verifiedAt: new Date().toISOString(),
       });
 
       await query(
@@ -261,14 +289,16 @@ export const DriverService = {
 
       // 3. Send Push Notification
       if (driver.fcm_token) {
-        notificationService.sendPushNotification(driver.fcm_token, {
-          title: 'Account Approved!',
-          body: 'Your documents have been verified. You can now go online and start earning.',
-          data: {
-            type: 'ACCOUNT_APPROVED',
-            onboarding_status: DriverOnboardingStatus.DOCUMENTS_APPROVED
-          }
-        }).catch(err => logger.error(`Failed to send approval notification: ${err.message}`));
+        notificationService
+          .sendPushNotification(driver.fcm_token, {
+            title: 'Account Approved!',
+            body: 'Your documents have been verified. You can now go online and start earning.',
+            data: {
+              type: 'ACCOUNT_APPROVED',
+              onboarding_status: DriverOnboardingStatus.DOCUMENTS_APPROVED,
+            },
+          })
+          .catch((err) => logger.error(`Failed to send approval notification: ${err.message}`));
       }
 
       return true;
@@ -346,7 +376,7 @@ export const DriverService = {
     };
   },
 
- async goOffline(driverId: string): Promise<void> {
+  async goOffline(driverId: string): Promise<void> {
     const driver = await DriverRepository.findById(driverId);
     if (!driver) {
       throw { statusCode: 404, message: 'Driver not found' };
@@ -370,21 +400,20 @@ export const DriverService = {
     });
   },
 
-
-  async findNearbyDrivers(io: Server, lng: number, lat: number, newTrip: Trip,radius:number) {
+  async findNearbyDrivers(io: Server, lng: number, lat: number, newTrip: Trip, radius: number) {
     // Business Rule: We only show drivers active in the last 10 mins
     // const { drivers, searchedRadius } = await DriverRepository.findNearbyDriversExpanding(lng, lat,radius);
     const drivers = await DriverRepository.findNearbyDrivers(lng, lat, radius);
 
     if (!drivers || drivers.length === 0) {
-      throw new Error("No drivers found in your area.");
+      throw new Error('No drivers found in your area.');
     }
 
     if (drivers && drivers.length > 0) {
       // Average speed 30km/h => 500 meters/min
-      const driversWithEta = drivers.map(d => ({
+      const driversWithEta = drivers.map((d) => ({
         ...d,
-        eta: Math.ceil(parseInt(d.distance_meters) / config.avgSpeedMetersPerMin) || 1
+        eta: Math.ceil(parseInt(d.distance_meters) / config.avgSpeedMetersPerMin) || 1,
       }));
 
       await TripService.requestRideToMultipleDrivers(io, [newTrip], driversWithEta);
@@ -395,11 +424,11 @@ export const DriverService = {
 
   async getAvailableDrivers(lng: number, lat: number, radius: number): Promise<any[]> {
     const driversData = await DriverRepository.findNearbyDrivers(lng, lat, radius);
-    
+
     // Process distance and ETA
     // Average speed 30km/h => 0.5 km/min => 500 meters/min
 
-    return driversData.map(d => ({
+    return driversData.map((d) => ({
       id: d.id,
       name: d.full_name || `${d.first_name || ''} ${d.last_name || ''}`.trim() || 'Unknown',
       phone_number: d.phone_number,
@@ -415,7 +444,7 @@ export const DriverService = {
   async syncLocation(id: string, lat: number, lng: number, address: string) {
     // Validation: Coordinates must be within Earth's range
     if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      throw new Error("Invalid coordinates provided.");
+      throw new Error('Invalid coordinates provided.');
     }
     return await DriverRepository.updateLocation(id, lat, lng, address);
   },
@@ -486,7 +515,7 @@ export const DriverService = {
     );
 
     const totalCompletedRides = parseInt(allTimeStats.rows[0]?.total_completed_rides || 0);
-    
+
     // Calculate app usage years
     const createdAt = new Date(driver.created_at || Date.now());
     const diffMs = Date.now() - createdAt.getTime();

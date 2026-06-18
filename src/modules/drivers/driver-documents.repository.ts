@@ -8,7 +8,11 @@ const parseDoc = (doc: any) => {
     return doc;
   }
   try {
-    if (doc.document_url && typeof doc.document_url === 'string' && (doc.document_url.trim().startsWith('{') || doc.document_url.trim().startsWith('['))) {
+    if (
+      doc.document_url &&
+      typeof doc.document_url === 'string' &&
+      (doc.document_url.trim().startsWith('{') || doc.document_url.trim().startsWith('['))
+    ) {
       return { ...doc, document_url: JSON.parse(doc.document_url) };
     }
   } catch (e) {

@@ -22,7 +22,12 @@ export const PricingController = {
         },
       });
 
-      return successResponse(res, response.status, 'Pricing calculated successfully', (response.data as any).data || response.data);
+      return successResponse(
+        res,
+        response.status,
+        'Pricing calculated successfully',
+        (response.data as any).data || response.data
+      );
     } catch (err: any) {
       logger.error(`calculateAllTypes error: ${err.message}`);
       if (err.response) {

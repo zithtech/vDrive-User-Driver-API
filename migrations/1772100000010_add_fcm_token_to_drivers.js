@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
+ 
 
 /**
  * Migration: Add fcm_token column to drivers table
