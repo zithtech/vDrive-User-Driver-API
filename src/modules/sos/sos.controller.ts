@@ -58,7 +58,10 @@ export class SosController {
     try {
       const user_id = (req as any).user.id;
       const user_type = (req.query.user_type as string) || 'driver';
-      const contacts = await SosRepository.getTrustedContacts(user_id, user_type as 'driver' | 'customer');
+      const contacts = await SosRepository.getTrustedContacts(
+        user_id,
+        user_type as 'driver' | 'customer'
+      );
       return successResponse(res, 200, 'Trusted contacts retrieved', contacts);
     } catch (err) {
       next(err);
@@ -75,7 +78,13 @@ export class SosController {
         return errorResponse(res, 400, 'Name and phone are required');
       }
 
-      const contact = await SosRepository.addTrustedContact(user_id, type, name, phone, relationship);
+      const contact = await SosRepository.addTrustedContact(
+        user_id,
+        type,
+        name,
+        phone,
+        relationship
+      );
       return successResponse(res, 201, 'Trusted contact added', contact);
     } catch (err) {
       next(err);

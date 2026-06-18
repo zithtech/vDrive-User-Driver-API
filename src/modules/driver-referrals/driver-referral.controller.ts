@@ -26,7 +26,10 @@ export const DriverReferralController = {
 
       // Generate if doesn't exist (for existing drivers before the feature)
       if (!referralCode) {
-        referralCode = await DriverReferralRepository.generateUniqueReferralCode(driver.first_name || 'VDR', 'DRIVER');
+        referralCode = await DriverReferralRepository.generateUniqueReferralCode(
+          driver.first_name || 'VDR',
+          'DRIVER'
+        );
         await DriverRepository.update(driverId, { referral_code: referralCode });
       }
 
@@ -54,20 +57,23 @@ export const DriverReferralController = {
 
       const stats = await DriverReferralRepository.getStatsByReferrer(driverId, 'DRIVER');
       const referralCoupons = await PromoService.getReferralRewardsForDriver(driverId);
-      
-      const totalCouponValue = referralCoupons.reduce((sum, p) => sum + Number(p.discount_value), 0);
+
+      const totalCouponValue = referralCoupons.reduce(
+        (sum, p) => sum + Number(p.discount_value),
+        0
+      );
 
       return successResponse(res, 200, 'Referral stats fetched successfully', {
         total_referrals: parseInt(stats.total_referrals) || 0,
         successful_referrals: parseInt(stats.successful_referrals) || 0,
         pending_referrals: parseInt(stats.pending_referrals) || 0,
         total_earned_coupons: totalCouponValue,
-        earned_coupons: referralCoupons.map(p => ({
+        earned_coupons: referralCoupons.map((p) => ({
           code: p.code,
           value: p.discount_value,
           description: p.description,
           expiry_date: p.expiry_date,
-          is_used: (p as any).isUsed
+          is_used: (p as any).isUsed,
         })),
       });
     } catch (err: any) {

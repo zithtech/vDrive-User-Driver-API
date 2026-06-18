@@ -4,7 +4,6 @@ import { successResponse } from '../../shared/errorHandler';
 import { logger } from '../../shared/logger';
 
 export class SupportController {
-
   /* ======================== FAQs ======================== */
 
   /** GET /support/faqs — Driver app fetches active FAQs */
@@ -72,7 +71,13 @@ export class SupportController {
   static async createTicket(req: Request, res: Response, next: NextFunction) {
     try {
       const { driver_id, subject, description, priority, category } = req.body;
-      const ticket = await SupportService.createTicket({ driver_id, subject, description, priority, category });
+      const ticket = await SupportService.createTicket({
+        driver_id,
+        subject,
+        description,
+        priority,
+        category,
+      });
       return successResponse(res, 201, 'Support ticket created successfully', ticket);
     } catch (error) {
       next(error);
@@ -157,7 +162,13 @@ export class SupportController {
   static async createUserTicket(req: Request, res: Response, next: NextFunction) {
     try {
       const { user_id, subject, description, priority, category } = req.body;
-      const ticket = await SupportService.createUserTicket({ user_id, subject, description, priority, category });
+      const ticket = await SupportService.createUserTicket({
+        user_id,
+        subject,
+        description,
+        priority,
+        category,
+      });
       return successResponse(res, 201, 'User support ticket created successfully', ticket);
     } catch (error) {
       next(error);

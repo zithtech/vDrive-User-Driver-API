@@ -3,7 +3,7 @@ import { PaymentService } from '../payments/payment.service';
 import { logger } from '../../shared/logger';
 
 export const PaymentController = {
-   async createOrder(req: Request, res: Response): Promise<Response> {
+  async createOrder(req: Request, res: Response): Promise<Response> {
     const { amount, driver_id, plan_id, billing_cycle } = req.body;
 
     if (!amount || isNaN(amount)) {
@@ -11,16 +11,23 @@ export const PaymentController = {
     }
 
     if (!driver_id || !plan_id || !billing_cycle) {
-      return res.status(400).json({ message: 'driver_id, plan_id, and billing_cycle are required.' });
+      return res
+        .status(400)
+        .json({ message: 'driver_id, plan_id, and billing_cycle are required.' });
     }
 
     try {
-      const order = await PaymentService.createRazorpayOrder(driver_id, plan_id, billing_cycle, amount);
+      const order = await PaymentService.createRazorpayOrder(
+        driver_id,
+        plan_id,
+        billing_cycle,
+        amount
+      );
       return res.status(200).json({
         success: true,
         order_id: order.id,
         amount: order.amount,
-        currency: order.currency
+        currency: order.currency,
       });
     } catch (error) {
       logger.error(`Controller Error (createOrder): ${error}`);
@@ -62,7 +69,7 @@ export const PaymentController = {
         success: true,
         order_id: order.id,
         amount: order.amount,
-        currency: order.currency
+        currency: order.currency,
       });
     } catch (error) {
       return res.status(500).json({ message: 'Failed to create Razorpay order.' });

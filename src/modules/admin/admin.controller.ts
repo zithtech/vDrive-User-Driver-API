@@ -6,7 +6,6 @@ import { query } from '../../shared/database';
 import { logger } from '../../shared/logger';
 
 export class AdminController {
-  
   static async getPendingDrivers(req: Request, res: Response, next: NextFunction) {
     try {
       // Query drivers who have submitted documents but are not yet verified
@@ -17,7 +16,7 @@ export class AdminController {
          WHERE onboarding_status = 'DOCS_SUBMITTED' 
          ORDER BY updated_at DESC`
       );
-      
+
       return successResponse(res, 200, 'Pending drivers fetched successfully', result.rows);
     } catch (error) {
       next(error);
@@ -27,12 +26,12 @@ export class AdminController {
   static async approveDocument(req: Request, res: Response, next: NextFunction) {
     try {
       const { documentId } = req.params;
-      
+
       const document = await DriverDocumentsService.verifyDocument(
-        documentId as string, 
+        documentId as string,
         DocumentStatus.VERIFIED
       );
-      
+
       if (!document) {
         return res.status(404).json({ success: false, message: 'Document not found' });
       }
@@ -47,17 +46,17 @@ export class AdminController {
     try {
       const { documentId } = req.params;
       const { reason } = req.body;
-      
+
       if (!reason) {
         return res.status(400).json({ success: false, message: 'Rejection reason is required' });
       }
 
       const document = await DriverDocumentsService.verifyDocument(
-        documentId as string, 
+        documentId as string,
         DocumentStatus.REJECTED,
         reason
       );
-      
+
       if (!document) {
         return res.status(404).json({ success: false, message: 'Document not found' });
       }

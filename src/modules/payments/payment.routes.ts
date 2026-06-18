@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { PaymentController } from '../payments/payment.controller';
 import { SubscriptionController } from '../subscriptions/subscription.controller';
-import { createOrderValidator, verifyPaymentValidator } from '../subscriptions/subscription.validator';
+import {
+  createOrderValidator,
+  verifyPaymentValidator,
+} from '../subscriptions/subscription.validator';
 
 const router = Router();
 
@@ -12,7 +15,6 @@ router.get('/my-subscription', SubscriptionController.getMySubscription);
 
 // General payment routes (if amount is passed directly)
 router.post('/generic-order', PaymentController.createOrder);
-
 
 //user
 router.post('/create-ride-order', PaymentController.createRideOrder);

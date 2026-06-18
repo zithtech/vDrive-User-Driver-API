@@ -31,25 +31,33 @@ export const UserService = {
     }
 
     if (data.email && data.role !== 'driver') {
-      EmailService.sendWelcomeEmail(data.email, data.first_name || data.full_name || 'Customer')
-        .catch(err => logger.error(`Welcome email failed for ${data.email}: ${err}`));
+      EmailService.sendWelcomeEmail(
+        data.email,
+        data.first_name || data.full_name || 'Customer'
+      ).catch((err) => logger.error(`Welcome email failed for ${data.email}: ${err}`));
     }
 
     if (data.referral_code) {
-      const valid = await ReferralService.validateReferralCode(data.referral_code, user.id as string)
-      if(!valid.valid){
+      const valid = await ReferralService.validateReferralCode(
+        data.referral_code,
+        user.id as string
+      );
+      if (!valid.valid) {
         logger.info(`Invalid referral code for user ${user.id}: ${data.referral_code}`);
-      }
-      else{
-        const referrerId = valid.referrerId
+      } else {
+        const referrerId = valid.referrerId;
         if (referrerId) {
           await UserRepository.incrementReferralCount(referrerId);
-          await ReferralService.createReferralRelationship(referrerId, user.id as string ,data.referral_code) ;
+          await ReferralService.createReferralRelationship(
+            referrerId,
+            user.id as string,
+            data.referral_code
+          );
         }
       }
     }
     const res = await ReferralService.generateReferralCode(user.id as string);
-    if(res){
+    if (res) {
       logger.info(`Referral code generated for user ${user.id}: ${res.referral_code}`);
     }
 
@@ -62,8 +70,8 @@ export const UserService = {
 
     const setQuery = fields.map((field, index) => `"${field}" = $${index + 1}`).join(', ');
 
-    const values = Object.values(data).map(value =>
-      (typeof value === 'object' && value !== null) ? JSON.stringify(value) : value
+    const values = Object.values(data).map((value) =>
+      typeof value === 'object' && value !== null ? JSON.stringify(value) : value
     );
     const user = await UserRepository.updateUser(id, setQuery, values);
 
@@ -116,7 +124,7 @@ export const UserService = {
     return user;
   },
 
-  async suspendUser(id: string , notes?: string) {
+  async suspendUser(id: string, notes?: string) {
     const user = await UserRepository.updateUserStatus(id, UserStatus.SUSPENDED, notes);
     if (!user) {
       throw { statusCode: 404, message: 'User not found' };
@@ -124,7 +132,7 @@ export const UserService = {
     return user;
   },
 
-  async unsuspendUser(id: string ) {
+  async unsuspendUser(id: string) {
     const notes = 'User unsuspended by admin';
     const user = await UserRepository.updateUserStatus(id, UserStatus.ACTIVE, notes);
     if (!user) {
@@ -158,5 +166,5 @@ export const UserService = {
     } catch (error) {
       logger.error('❌ Firebase delivery failed:', error);
     }
-  }
+  },
 };

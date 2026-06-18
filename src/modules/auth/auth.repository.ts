@@ -62,29 +62,29 @@ export const AuthRepository = {
   },
 
   async blockUser(phone_number: string, role: string, blocked_until: Date) {
-    await query(
-      `UPDATE OTP SET blocked_until = $1 WHERE phone_number = $2 AND role = $3`,
-      [blocked_until, phone_number, role]
-    );
+    await query(`UPDATE OTP SET blocked_until = $1 WHERE phone_number = $2 AND role = $3`, [
+      blocked_until,
+      phone_number,
+      role,
+    ]);
   },
 
   async resetRequestCount(phone_number: string, role: string) {
-    await query(
-      `UPDATE OTP SET request_count = 0 WHERE phone_number = $1 AND role = $2`,
-      [phone_number, role]
-    );
+    await query(`UPDATE OTP SET request_count = 0 WHERE phone_number = $1 AND role = $2`, [
+      phone_number,
+      role,
+    ]);
   },
 
   async clearOtpRecord(phone_number: string, role: string) {
     await query(`DELETE FROM OTP WHERE phone_number=$1 AND role=$2`, [phone_number, role]);
   },
 
-
   async getUser(phone_number: string, role: string): Promise<User | null> {
     // 1. Map roles to specific table names
     const tableMap: Record<string, string> = {
       customer: 'users',
-      driver: 'drivers'
+      driver: 'drivers',
     };
 
     const tableName = tableMap[role];
@@ -103,7 +103,7 @@ export const AuthRepository = {
     return result?.rows[0] || null;
   },
 
-    async getDriver(phone_number: string, role: string): Promise<User | null> {
+  async getDriver(phone_number: string, role: string): Promise<User | null> {
     const result = await query(
       `SELECT * FROM drivers WHERE phone_number = $1 AND role = $2 LIMIT 1`,
       [phone_number, role]
@@ -112,12 +112,7 @@ export const AuthRepository = {
     return result?.rows[0] || null;
   },
 
- 
-  async signOutUser(
-    userId: string,
-    device_id: string,
-    role: string
-  ): Promise<boolean> {
+  async signOutUser(userId: string, device_id: string, role: string): Promise<boolean> {
     try {
       const table = role === 'driver' ? 'drivers' : 'users';
       const sessionTable = this.getSessionTable(role);
@@ -138,10 +133,7 @@ export const AuthRepository = {
       );
 
       // ✅ Clear device_id from users/drivers table
-      await query(
-        `UPDATE ${table} SET device_id = NULL WHERE id = $1`,
-        [userId]
-      );
+      await query(`UPDATE ${table} SET device_id = NULL WHERE id = $1`, [userId]);
 
       // ✅ Unsubscribe from FCM topic
       if (fcmToken) {
@@ -150,29 +142,39 @@ export const AuthRepository = {
 
       logger.info(`User ${userId} signed out from device ${device_id}`);
       return true;
-
     } catch (err) {
       logger.error(`SignOut failed for user ${userId}: ${err}`);
       return false;
     }
   },
 
-  async userDeviceIDUpdate(id: string, device_id: string, role: string, fcm_token: string): Promise<boolean> {
+  async userDeviceIDUpdate(
+    id: string,
+    device_id: string,
+    role: string,
+    fcm_token: string
+  ): Promise<boolean> {
     if (role === 'customer') {
-      const result = await query(`UPDATE users SET device_id = $1, fcm_token = $2 WHERE id = $3`, [device_id, fcm_token, id]);
+      const result = await query(`UPDATE users SET device_id = $1, fcm_token = $2 WHERE id = $3`, [
+        device_id,
+        fcm_token,
+        id,
+      ]);
       return (result?.rowCount ?? 0) > 0;
     }
     if (role === 'driver') {
-      const result = await query(`UPDATE drivers SET device_id = $1, fcm_token = $2 WHERE id = $3`, [device_id, fcm_token, id]);
+      const result = await query(
+        `UPDATE drivers SET device_id = $1, fcm_token = $2 WHERE id = $3`,
+        [device_id, fcm_token, id]
+      );
       return (result?.rowCount ?? 0) > 0;
     }
     return false;
   },
 
-
-  // *************************************************************************** 
+  // ***************************************************************************
   // ─── Sessions ─────────────────────────────────────────────────────────────
-  // *************************************************************************** 
+  // ***************************************************************************
 
   getSessionTable(role: string): string {
     return role === 'driver' ? 'driver_sessions' : 'user_sessions';
@@ -246,10 +248,9 @@ export const AuthRepository = {
       [userId, device_id]
     );
     const userTable = role === 'driver' ? 'drivers' : 'users';
-    await query(
-      `UPDATE ${userTable} SET device_id = NULL, refresh_token = NULL WHERE id = $1`,
-      [userId]
-    );
+    await query(`UPDATE ${userTable} SET device_id = NULL, refresh_token = NULL WHERE id = $1`, [
+      userId,
+    ]);
 
     return true;
   },
@@ -267,10 +268,10 @@ export const AuthRepository = {
       [device_id, exclude_user_id]
     );
     const userTable = role === 'driver' ? 'drivers' : 'users';
-    await query(
-      `UPDATE ${userTable} SET device_id = NULL WHERE device_id = $1 AND id != $2`,
-      [device_id, exclude_user_id]
-    );
+    await query(`UPDATE ${userTable} SET device_id = NULL WHERE device_id = $1 AND id != $2`, [
+      device_id,
+      exclude_user_id,
+    ]);
   },
 
   // Also add getSessionByDevice to AuthRepository
@@ -304,9 +305,9 @@ export const AuthRepository = {
     return bcrypt.compare(refresh_token, session.refresh_token);
   },
 
-  //*************************************************************************** 
+  //***************************************************************************
   // ─── FCM Token Methods ─────────────────────────────────────────────────────
-  //*************************************************************************** 
+  //***************************************************************************
 
   // Get FCM token for a device
   async getFcmToken(user_id: string, role: string, device_id: string) {
@@ -330,9 +331,9 @@ export const AuthRepository = {
     );
     logger.info(`FCM token cleared for user: ${user_id} device: ${device_id}`);
   },
-  //****************************************************************************** 
+  //******************************************************************************
   // ─── Force Logout Methods ─────────────────────────────────────────────────────
-  //****************************************************************************** 
+  //******************************************************************************
 
   // Set force logout flag for old device
   async setForceLogout(user_id: string, role: string, device_id: string) {
@@ -354,5 +355,4 @@ export const AuthRepository = {
     );
     return result.rows[0]?.force_logout ?? false;
   },
-}
-
+};

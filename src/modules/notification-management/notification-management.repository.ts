@@ -15,7 +15,7 @@ export const NotificationRepository = {
         // Array.isArray(data.specific_user_id) ? data.specific_user_id[0] : (data.specific_user_id || null),
         data.attached_offer,
         data.coupon_code,
-        data.promo_code
+        data.promo_code,
       ]
     );
     return res.rows[0];
@@ -50,7 +50,18 @@ export const NotificationRepository = {
     let idx = 1;
 
     Object.entries(data).forEach(([key, value]) => {
-      if (['title', 'body', 'target_type', 'target_audience', 'coupon_code', 'promo_code', 'attached_offer', 'specific_user_id'].includes(key)) {
+      if (
+        [
+          'title',
+          'body',
+          'target_type',
+          'target_audience',
+          'coupon_code',
+          'promo_code',
+          'attached_offer',
+          'specific_user_id',
+        ].includes(key)
+      ) {
         fields.push(`${key} = $${idx++}`);
         values.push(value);
       }
@@ -88,7 +99,12 @@ export const NotificationRepository = {
     return res.rows;
   },
 
-  async updateDispatchStatus(id: number, status: string, errorLog: string | null = null, notifyCount: number = 0) {
+  async updateDispatchStatus(
+    id: number,
+    status: string,
+    errorLog: string | null = null,
+    notifyCount: number = 0
+  ) {
     const res = await query(
       `UPDATE notification_dispatches 
        SET status = $1::text, 
@@ -104,7 +120,10 @@ export const NotificationRepository = {
   },
 
   async getNotificationContent(id: string) {
-    const res = await query(`SELECT title, body, coupon_code, promo_code FROM notifications WHERE id = $1`, [id]);
+    const res = await query(
+      `SELECT title, body, coupon_code, promo_code FROM notifications WHERE id = $1`,
+      [id]
+    );
     return res.rows[0];
   },
 
@@ -142,7 +161,10 @@ export const NotificationRepository = {
   },
 
   async getCustomerTokenSpecific(id: string) {
-    const res = await query(`SELECT id, fcm_token FROM users WHERE id = $1 AND fcm_token IS NOT NULL`, [id]);
+    const res = await query(
+      `SELECT id, fcm_token FROM users WHERE id = $1 AND fcm_token IS NOT NULL`,
+      [id]
+    );
     return res.rows.map((r: any) => ({ userId: r.id, token: r.fcm_token }));
   },
 
@@ -181,7 +203,10 @@ export const NotificationRepository = {
 
   async getDriverTokenSpecific(id: string | string[]) {
     const driverId = Array.isArray(id) ? id[0] : id;
-    const res = await query(`SELECT id, fcm_token FROM drivers WHERE id = $1 AND fcm_token IS NOT NULL`, [driverId]);
+    const res = await query(
+      `SELECT id, fcm_token FROM drivers WHERE id = $1 AND fcm_token IS NOT NULL`,
+      [driverId]
+    );
     return res.rows.map((r: any) => ({ userId: r.id, token: r.fcm_token }));
   },
 
@@ -189,7 +214,7 @@ export const NotificationRepository = {
   async hasReceivedNotification(notificationId: string, userId: string, targetType: string) {
     const table = targetType === 'DRIVER' ? 'driver_notification_logs' : 'user_notification_logs';
     const idField = targetType === 'DRIVER' ? 'driver_id' : 'user_id';
-    
+
     const res = await query(
       `SELECT id FROM ${table} 
        WHERE notification_id = $1 AND ${idField} = $2 AND status = 'SENT'`,
@@ -200,7 +225,7 @@ export const NotificationRepository = {
 
   async filterExistingRecipients(notificationId: string, userIds: string[], targetType: string) {
     if (userIds.length === 0) return [];
-    
+
     const table = targetType === 'DRIVER' ? 'driver_notification_logs' : 'user_notification_logs';
     const idField = targetType === 'DRIVER' ? 'driver_id' : 'user_id';
 
@@ -209,12 +234,18 @@ export const NotificationRepository = {
        WHERE notification_id = $1 AND ${idField} = ANY($2) AND status = 'SENT'`,
       [notificationId, userIds]
     );
-    
+
     const sentIds = new Set(res.rows.map((r: any) => r[idField]));
-    return userIds.filter(id => !sentIds.has(id));
+    return userIds.filter((id) => !sentIds.has(id));
   },
 
-  async logNotificationSend(notificationId: string, targetType: string, userId: string, status: string, error?: string) {
+  async logNotificationSend(
+    notificationId: string,
+    targetType: string,
+    userId: string,
+    status: string,
+    error?: string
+  ) {
     const table = targetType === 'DRIVER' ? 'driver_notification_logs' : 'user_notification_logs';
     const idField = targetType === 'DRIVER' ? 'driver_id' : 'user_id';
 
@@ -225,7 +256,12 @@ export const NotificationRepository = {
     );
   },
 
-  async logBulkSends(notificationId: string, targetType: string, userIds: string[], status: string) {
+  async logBulkSends(
+    notificationId: string,
+    targetType: string,
+    userIds: string[],
+    status: string
+  ) {
     if (userIds.length === 0) return;
 
     const table = targetType === 'DRIVER' ? 'driver_notification_logs' : 'user_notification_logs';
@@ -238,5 +274,5 @@ export const NotificationRepository = {
        VALUES ${values}`,
       [notificationId, ...userIds, status]
     );
-  }
+  },
 };

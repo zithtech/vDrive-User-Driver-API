@@ -81,7 +81,6 @@ export const TripValidation = {
     notes: tripSchema.notesRule,
   }),
 
-
   acceptTripValidation: Joi.object().keys({
     trip_id: tripSchema.tripIdRule,
     driver_id: tripSchema.driverIdRule.optional(),

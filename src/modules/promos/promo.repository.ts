@@ -58,23 +58,51 @@ export const PromoRepository = {
 
   async create(promoData: Partial<Promo>, client?: any): Promise<Promo> {
     const q = client ? client.query.bind(client) : query;
-    const { code, description, discount_type, discount_value, target_type, target_driver_id, min_rides_required, max_uses, max_uses_per_driver, start_date, expiry_date, is_active, promo_type } = promoData;
+    const {
+      code,
+      description,
+      discount_type,
+      discount_value,
+      target_type,
+      target_driver_id,
+      min_rides_required,
+      max_uses,
+      max_uses_per_driver,
+      start_date,
+      expiry_date,
+      is_active,
+      promo_type,
+    } = promoData;
     const result = await q(
       `INSERT INTO promos (code, description, discount_type, discount_value, target_type, target_driver_id, min_rides_required, max_uses, max_uses_per_driver, start_date, expiry_date, is_active, promo_type)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()), $11, $12, $13) RETURNING *`,
-      [code, description, discount_type, discount_value, target_type, target_driver_id, min_rides_required || 0, max_uses, max_uses_per_driver || 1, start_date, expiry_date, is_active ?? true, promo_type || 'OFFER']
+      [
+        code,
+        description,
+        discount_type,
+        discount_value,
+        target_type,
+        target_driver_id,
+        min_rides_required || 0,
+        max_uses,
+        max_uses_per_driver || 1,
+        start_date,
+        expiry_date,
+        is_active ?? true,
+        promo_type || 'OFFER',
+      ]
     );
     return result.rows[0];
   },
 
   async update(id: number, promoData: Partial<Promo>, client?: any): Promise<Promo> {
     const q = client ? client.query.bind(client) : query;
-    const columns = Object.keys(promoData).filter(key => (promoData as any)[key] !== undefined);
+    const columns = Object.keys(promoData).filter((key) => (promoData as any)[key] !== undefined);
     if (columns.length === 0) return this.findById(id, client) as any;
-    
+
     const setClause = columns.map((col, i) => `"${col}" = $${i + 2}`).join(', ');
-    const params = columns.map(col => (promoData as any)[col]);
-    
+    const params = columns.map((col) => (promoData as any)[col]);
+
     const result = await q(
       `UPDATE promos SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
       [id, ...params]
@@ -110,5 +138,5 @@ export const PromoRepository = {
       [promo_id, driver_id, payment_id, discount_applied]
     );
     return result.rows[0];
-  }
+  },
 };

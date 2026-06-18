@@ -49,8 +49,6 @@ export const lastNameRule = Joi.string()
   .allow('', null)
   .optional();
 
-
-
 export const genderRule = enumString(Object.values(Gender)).allow('', null).optional().messages({
   'string.base': 'Gender must be a string',
   'any.only': 'Gender must be one of: male, female, other',
@@ -104,7 +102,6 @@ export const deviceIdRule = Joi.string().min(16).max(64).messages({
   'any.required': 'Device ID is required',
 });
 
-
 const favoritePlaceSchema = Joi.object({
   id: Joi.string().required().messages({
     'any.required': 'Place ID is required',
@@ -129,11 +126,12 @@ export const updateFavoritesSchema = Joi.array()
     'array.base': 'favourite_places must be an array',
   });
 
-
 export const emergencyContactObject = Joi.object({
   name: Joi.string().required(),
-  phone: Joi.string().regex(/^[0-9+]{10,15}$/).required(),
-  relationship: Joi.string().required()
+  phone: Joi.string()
+    .regex(/^[0-9+]{10,15}$/)
+    .required(),
+  relationship: Joi.string().required(),
 });
 
 export const emergencyContactSchema = Joi.array()
@@ -156,7 +154,7 @@ export const settingsPreferenceSchema = Joi.object({
   .unknown(false)
   .messages({
     'object.base': 'settings_preferences must be an object',
-    'any.required': 'All permission toggles are required for a full update'
+    'any.required': 'All permission toggles are required for a full update',
   });
 
 export const ProfileUrl = Joi.string().optional().allow(null, '').messages({
@@ -165,10 +163,11 @@ export const ProfileUrl = Joi.string().optional().allow(null, '').messages({
 });
 
 export const onboardingStatusRule = enumString(Object.values(OnboardingStatus)).messages({
-  'any.only': 'Onboarding status must be one of: pending, phone_verified, profile_completed, completed',
+  'any.only':
+    'Onboarding status must be one of: pending, phone_verified, profile_completed, completed',
   'any.required': 'Onboarding status is required',
   'string.empty': 'Onboarding status cannot be empty',
-})
+});
 
 export const referralCodeRule = Joi.string()
   .trim()

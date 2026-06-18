@@ -3,8 +3,7 @@ import { ICreatePaymentInput, IPayment } from './payment.model';
 import { logger } from '../../shared/logger';
 
 export const PaymentRepository = {
-  
-    async saveRideOrder(orderData: any): Promise<void> {
+  async saveRideOrder(orderData: any): Promise<void> {
     try {
       // Example: await Database.orders.create(orderData);
       logger.info(`Order saved to DB: ${orderData.id}`);
@@ -41,7 +40,12 @@ export const PaymentRepository = {
     return res.rows[0].id;
   },
 
-  async updateStatus(orderId: string, status: 'completed' | 'failed', paymentId?: string, signature?: string): Promise<void> {
+  async updateStatus(
+    orderId: string,
+    status: 'completed' | 'failed',
+    paymentId?: string,
+    signature?: string
+  ): Promise<void> {
     const sql = `
       UPDATE payments 
       SET status = $1, razorpay_payment_id = $2, razorpay_signature = $3, updated_at = NOW()
@@ -54,5 +58,5 @@ export const PaymentRepository = {
     const sql = 'SELECT * FROM payments WHERE razorpay_order_id = $1';
     const res = await query(sql, [orderId]);
     return res.rows[0] || null;
-  }
+  },
 };

@@ -1,4 +1,3 @@
-
 import { query } from '../../shared/database';
 import { logger } from '../../shared/logger';
 
@@ -31,7 +30,12 @@ export const CouponNotificationRepository = {
   /**
    * Fetches users to notify based on target criteria
    */
-  async getTargetUsers(targetType: string, specificUserId?: string, limit: number = 50, offset: number = 0) {
+  async getTargetUsers(
+    targetType: string,
+    specificUserId?: string,
+    limit: number = 50,
+    offset: number = 0
+  ) {
     let sql = `SELECT id, email, full_name, total_trips FROM users WHERE status = 'active' AND email IS NOT NULL`;
     const params: any[] = [];
 
@@ -75,7 +79,12 @@ export const CouponNotificationRepository = {
   /**
    * Logs a notification attempt for a user
    */
-  async logNotification(couponId: string, userId: string, status: 'SENT' | 'FAILED', error?: string) {
+  async logNotification(
+    couponId: string,
+    userId: string,
+    status: 'SENT' | 'FAILED',
+    error?: string
+  ) {
     await query(
       `INSERT INTO user_email_logs (coupon_id, user_id, status, error_message) 
        VALUES ($1, $2, $3, $4)`,
@@ -108,5 +117,5 @@ export const CouponNotificationRepository = {
       [couponId, userId]
     );
     return res.rows.length > 0;
-  }
+  },
 };

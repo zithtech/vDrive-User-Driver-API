@@ -4,12 +4,14 @@ import { SubscriptionPlan, DriverSubscription, PaymentRecord } from './subscript
 export const SubscriptionRepository = {
   async getPlanById(planId: number, client?: any): Promise<SubscriptionPlan | null> {
     const q = client ? client.query.bind(client) : query;
-    const result = await q('SELECT * FROM recharge_plans WHERE id = $1 AND is_active = true', [planId]);
+    const result = await q('SELECT * FROM recharge_plans WHERE id = $1 AND is_active = true', [
+      planId,
+    ]);
     if (!result.rows[0]) return null;
     const plan = result.rows[0];
     return {
       ...plan,
-      name: plan.plan_name
+      name: plan.plan_name,
     };
   },
 
@@ -18,17 +20,39 @@ export const SubscriptionRepository = {
     const result = await q('SELECT * FROM recharge_plans WHERE is_active = true');
     return result.rows.map((plan: any) => ({
       ...plan,
-      name: plan.plan_name
+      name: plan.plan_name,
     }));
   },
 
   async createPayment(paymentData: Partial<PaymentRecord>, client?: any): Promise<PaymentRecord> {
     const q = client ? client.query.bind(client) : query;
-    const { driver_id, plan_id, billing_cycle, amount, currency, razorpay_order_id, status, applied_promo_id, discount_amount, reward_amount_used } = paymentData;
+    const {
+      driver_id,
+      plan_id,
+      billing_cycle,
+      amount,
+      currency,
+      razorpay_order_id,
+      status,
+      applied_promo_id,
+      discount_amount,
+      reward_amount_used,
+    } = paymentData;
     const result = await q(
       `INSERT INTO payments (driver_id, plan_id, billing_cycle, amount, currency, razorpay_order_id, status, applied_promo_id, discount_amount, reward_amount_used)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-      [driver_id, plan_id, billing_cycle, amount, currency, razorpay_order_id, status, applied_promo_id, discount_amount, reward_amount_used]
+      [
+        driver_id,
+        plan_id,
+        billing_cycle,
+        amount,
+        currency,
+        razorpay_order_id,
+        status,
+        applied_promo_id,
+        discount_amount,
+        reward_amount_used,
+      ]
     );
     return result.rows[0];
   },
@@ -39,7 +63,13 @@ export const SubscriptionRepository = {
     return result.rows[0] || null;
   },
 
-  async updatePaymentStatus(orderId: string, status: string, paymentId?: string, signature?: string, client?: any): Promise<PaymentRecord> {
+  async updatePaymentStatus(
+    orderId: string,
+    status: string,
+    paymentId?: string,
+    signature?: string,
+    client?: any
+  ): Promise<PaymentRecord> {
     const q = client ? client.query.bind(client) : query;
     const result = await q(
       `UPDATE payments 
@@ -53,7 +83,7 @@ export const SubscriptionRepository = {
   async getActiveSubscription(driverId: string, client?: any): Promise<DriverSubscription | null> {
     const q = client ? client.query.bind(client) : query;
     const result = await q(
-      'SELECT * FROM driver_subscriptions WHERE driver_id = $1 AND status = \'active\'',
+      "SELECT * FROM driver_subscriptions WHERE driver_id = $1 AND status = 'active'",
       [driverId]
     );
     return result.rows[0] || null;
@@ -62,12 +92,15 @@ export const SubscriptionRepository = {
   async expireActiveSubscription(driverId: string, client?: any): Promise<void> {
     const q = client ? client.query.bind(client) : query;
     await q(
-      'UPDATE driver_subscriptions SET status = \'expired\', updated_at = CURRENT_TIMESTAMP WHERE driver_id = $1 AND status = \'active\'',
+      "UPDATE driver_subscriptions SET status = 'expired', updated_at = CURRENT_TIMESTAMP WHERE driver_id = $1 AND status = 'active'",
       [driverId]
     );
   },
 
-  async createSubscription(subscriptionData: Partial<DriverSubscription>, client?: any): Promise<DriverSubscription> {
+  async createSubscription(
+    subscriptionData: Partial<DriverSubscription>,
+    client?: any
+  ): Promise<DriverSubscription> {
     const q = client ? client.query.bind(client) : query;
     const { driver_id, plan_id, billing_cycle, start_date, expiry_date, status } = subscriptionData;
     const result = await q(
@@ -80,7 +113,7 @@ export const SubscriptionRepository = {
 
   async expireReachedSubscriptions(client?: any): Promise<number> {
     const q = client ? client.query.bind(client) : query;
-    
+
     // 1. Identify drivers whose subscriptions are expiring
     const toExpire = await q(
       "SELECT DISTINCT driver_id FROM driver_subscriptions WHERE expiry_date < NOW() AND status = 'active'"
@@ -98,7 +131,7 @@ export const SubscriptionRepository = {
     // 3. Update drivers table status for these drivers
     // Note: In real scenarios, a driver might have another pending sub, but standard flow is they become inactive.
     await q(
-      "UPDATE drivers SET subscription_active = false, updated_at = NOW() WHERE id = ANY($1)",
+      'UPDATE drivers SET subscription_active = false, updated_at = NOW() WHERE id = ANY($1)',
       [driverIds]
     );
 
@@ -124,5 +157,5 @@ export const SubscriptionRepository = {
       [driverId]
     );
     return (result.rowCount ?? 0) > 0;
-  }
+  },
 };

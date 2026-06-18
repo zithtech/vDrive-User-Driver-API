@@ -70,7 +70,11 @@ export const ReferralController = {
         return res.status(400).json({ error: 'Referee User ID is required' });
       }
 
-      const result = await ReferralService.applyReferralDiscount(refereeUserId, minRideAmount, tripId);
+      const result = await ReferralService.applyReferralDiscount(
+        refereeUserId,
+        minRideAmount,
+        tripId
+      );
       if (!result.applied) {
         return res.status(400).json({ success: false, error: result.error });
       }
@@ -122,17 +126,17 @@ export const ReferralController = {
       const hasUsed = await ReferralService.hasUsedReferralCode(userId);
       // eligibility means they HAVE a relationship record (used a code) but status is PENDING
       const relationship = await ReferralRepository.getReferralRelationshipByReferred(userId);
-      
-      return res.status(200).json({ 
-        success: true, 
-        data: { 
+
+      return res.status(200).json({
+        success: true,
+        data: {
           isReferred: !!relationship,
-          isEligible: relationship?.status === 'PENDING'
-        } 
+          isEligible: relationship?.status === 'PENDING',
+        },
       });
     } catch (error: any) {
       logger.error('ReferralController.checkEligibility error', error);
       return res.status(500).json({ error: error.message || 'Internal Server Error' });
     }
-  }
+  },
 };

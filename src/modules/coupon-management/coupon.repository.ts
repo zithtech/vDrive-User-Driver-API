@@ -4,29 +4,29 @@ import { logger } from '../../shared/logger';
 export const CouponRepository = {
   // async findByCode(code: string) {
   //   const result = await query(
-  //     `SELECT * FROM coupons 
-  //      WHERE code = $1 AND is_active = TRUE 
-  //      AND valid_from <= CURRENT_TIMESTAMP 
+  //     `SELECT * FROM coupons
+  //      WHERE code = $1 AND is_active = TRUE
+  //      AND valid_from <= CURRENT_TIMESTAMP
   //      AND valid_until >= CURRENT_TIMESTAMP`,
   //     [code]
   //   );
   //   return result.rows[0] || null;
   // },
   async findByCode(code: string) {
-  const result = await query(`SELECT *, 
+    const result = await query(
+      `SELECT *, 
       CURRENT_TIMESTAMP as server_time 
-    FROM coupons WHERE code = $1`, [code]);
+    FROM coupons WHERE code = $1`,
+      [code]
+    );
 
-  logger.info(`Coupon lookup: ${JSON.stringify(result.rows)}`);
+    logger.info(`Coupon lookup: ${JSON.stringify(result.rows)}`);
 
-  return result.rows[0] || null;
-},
+    return result.rows[0] || null;
+  },
 
   async findById(id: string) {
-    const result = await query(
-      `SELECT * FROM coupons WHERE id = $1`,
-      [id]
-    );
+    const result = await query(`SELECT * FROM coupons WHERE id = $1`, [id]);
     return result.rows[0] || null;
   },
 
@@ -51,10 +51,9 @@ export const CouponRepository = {
   },
 
   async getTotalUsageCount(couponId: string) {
-    const result = await query(
-      `SELECT COUNT(*) FROM coupon_usages WHERE coupon_id = $1`,
-      [couponId]
-    );
+    const result = await query(`SELECT COUNT(*) FROM coupon_usages WHERE coupon_id = $1`, [
+      couponId,
+    ]);
     return parseInt(result.rows[0].count, 10);
   },
 
@@ -75,7 +74,7 @@ export const CouponRepository = {
         data.user_id,
         data.trip_id,
         data.discount_applied,
-        data.referral_relationship_id || null
+        data.referral_relationship_id || null,
       ]
     );
     return result.rows[0];
@@ -136,10 +135,9 @@ export const CouponRepository = {
   },
 
   async getSubscribedTokens(couponId: string) {
-    const result = await query(
-      `SELECT fcm_token FROM coupon_subscriptions WHERE coupon_id = $1`,
-      [couponId]
-    );
+    const result = await query(`SELECT fcm_token FROM coupon_subscriptions WHERE coupon_id = $1`, [
+      couponId,
+    ]);
     return result.rows.map((row: any) => row.fcm_token);
-  }
+  },
 };

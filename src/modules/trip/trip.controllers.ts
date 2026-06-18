@@ -60,7 +60,7 @@ export const TripController = {
       next(err);
     }
   },
-  
+
   async createTrip(req: Request, res: Response, next: NextFunction) {
     try {
       const { coupon_code, ...tripDataRaw } = req.body;
@@ -86,7 +86,12 @@ export const TripController = {
       if (trip.booking_type === BookingType.LIVE) {
         const { DriverService } = require('../drivers/driver.service');
         const io = req.app.get('io');
-        DriverService.findNearbyDrivers(io, Number(trip.pickup_lng), Number(trip.pickup_lat), trip).catch((err: any) => 
+        DriverService.findNearbyDrivers(
+          io,
+          Number(trip.pickup_lng),
+          Number(trip.pickup_lat),
+          trip
+        ).catch((err: any) =>
           logger.error(`Automatic broadcast failed for trip ${trip.trip_id}: ${err.message}`)
         );
       }
@@ -157,8 +162,6 @@ export const TripController = {
     }
   },
 
-
-
   async getActiveTripByUserId(req: Request, res: Response, next: NextFunction) {
     try {
       const trip = await TripService.getActiveTripByUserId(req?.params?.id as string);
@@ -169,27 +172,28 @@ export const TripController = {
     }
   },
 
-
-
-
   async cancelTrip(req: Request, res: Response) {
     const { id } = req.params;
     const { trip_status, cancel_reason, cancel_by, notes } = req.body;
     const io = req.app.get('io');
 
     try {
-      const trip = await TripService.cancelTrip(id as string, trip_status, cancel_reason, cancel_by, notes);
+      const trip = await TripService.cancelTrip(
+        id as string,
+        trip_status,
+        cancel_reason,
+        cancel_by,
+        notes
+      );
       if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-      notifyAdmin('TRIP_STATUS_UPDATE', { 
-        id: trip.trip_id, 
-        status: trip.trip_status, 
+      notifyAdmin('TRIP_STATUS_UPDATE', {
+        id: trip.trip_id,
+        status: trip.trip_status,
         cancelReason: trip.cancel_reason,
-        cancelledBy: trip.cancel_by 
+        cancelledBy: trip.cancel_by,
       });
-      const userfcmtoken = trip.user_id
-        ? await UserRepository.getFcmTokenById(trip.user_id)
-        : null;
+      const userfcmtoken = trip.user_id ? await UserRepository.getFcmTokenById(trip.user_id) : null;
 
       const driverfcmtoken = trip.driver_id
         ? await DriverRepository.getFcmTokenById(trip.driver_id)
@@ -203,7 +207,6 @@ export const TripController = {
         if (driverfcmtoken && trip.trip_id) {
           await DriverNotifications.rideCancelled(driverfcmtoken, trip.trip_id);
         }
-
       } else if (cancel_by === CancelBy.DRIVER) {
         if (driverfcmtoken && trip.trip_id) {
           await DriverNotifications.bookingCancelled(driverfcmtoken, trip.trip_id, notes || '');
@@ -212,21 +215,17 @@ export const TripController = {
         if (userfcmtoken && trip.trip_id) {
           await UserNotifications.rideCancelled(userfcmtoken, trip.trip_id);
         }
-   
       }
-
 
       return res.status(200).json({
         success: true,
-        message: "Trip cancelled successfully",
-        data: trip
+        message: 'Trip cancelled successfully',
+        data: trip,
       });
-
     } catch (error) {
-      return res.status(500).json({ success: false, message: "Could not cancel trip" });
+      return res.status(500).json({ success: false, message: 'Could not cancel trip' });
     }
   },
-
 
   async assignDriver(req: Request, res: Response, next: NextFunction) {
     try {
@@ -243,9 +242,9 @@ export const TripController = {
 
       if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-      notifyAdmin('TRIP_STATUS_UPDATE', { 
-        id: trip.trip_id, 
-        status: trip.trip_status 
+      notifyAdmin('TRIP_STATUS_UPDATE', {
+        id: trip.trip_id,
+        status: trip.trip_status,
       });
 
       return successResponse(res, 200, 'Driver assigned successfully', trip);
@@ -264,10 +263,10 @@ export const TripController = {
       const trip = await TripService.acceptTrip(id as string, driverId);
       if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-      notifyAdmin('TRIP_ACCEPTED', { 
-        id: trip.trip_id, 
+      notifyAdmin('TRIP_ACCEPTED', {
+        id: trip.trip_id,
         driverId: trip.driver_id,
-        status: trip.trip_status 
+        status: trip.trip_status,
       });
       return successResponse(res, 200, 'Trip accepted successfully', trip);
     } catch (err: any) {
@@ -282,9 +281,9 @@ export const TripController = {
       const trip = await TripService.startTrip(id as string);
       if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-      notifyAdmin('TRIP_STATUS_UPDATE', { 
-        id: trip.trip_id, 
-        status: trip.trip_status 
+      notifyAdmin('TRIP_STATUS_UPDATE', {
+        id: trip.trip_id,
+        status: trip.trip_status,
       });
       return successResponse(res, 200, 'Trip started successfully', trip);
     } catch (err: any) {
@@ -300,10 +299,10 @@ export const TripController = {
       const trip = await TripService.completeTrip(id as string, distance_km, trip_duration_minutes);
       if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-      notifyAdmin('TRIP_STATUS_UPDATE', { 
-        id: trip.trip_id, 
+      notifyAdmin('TRIP_STATUS_UPDATE', {
+        id: trip.trip_id,
         status: trip.trip_status,
-        totalFare: trip.total_fare
+        totalFare: trip.total_fare,
       });
       return successResponse(res, 200, 'Trip completed successfully', trip);
     } catch (err: any) {
@@ -318,9 +317,9 @@ export const TripController = {
       const trip = await TripService.arrivedTrip(id as string);
       if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-      notifyAdmin('TRIP_STATUS_UPDATE', { 
-        id: trip.trip_id, 
-        status: trip.trip_status 
+      notifyAdmin('TRIP_STATUS_UPDATE', {
+        id: trip.trip_id,
+        status: trip.trip_status,
       });
       return successResponse(res, 200, 'Driver arrived at pickup successfully', trip);
     } catch (err: any) {
@@ -335,9 +334,9 @@ export const TripController = {
       const trip = await TripService.arrivingTrip(id as string);
       if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-      notifyAdmin('TRIP_STATUS_UPDATE', { 
-        id: trip.trip_id, 
-        status: trip.trip_status 
+      notifyAdmin('TRIP_STATUS_UPDATE', {
+        id: trip.trip_id,
+        status: trip.trip_status,
       });
       return successResponse(res, 200, 'Driver is arriving at pickup', trip);
     } catch (err: any) {
@@ -352,9 +351,9 @@ export const TripController = {
       const trip = await TripService.destinationReachedTrip(id as string);
       if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-      notifyAdmin('TRIP_STATUS_UPDATE', { 
-        id: trip.trip_id, 
-        status: trip.trip_status 
+      notifyAdmin('TRIP_STATUS_UPDATE', {
+        id: trip.trip_id,
+        status: trip.trip_status,
       });
       return successResponse(res, 200, 'Driver reached destination successfully', trip);
     } catch (err: any) {
@@ -387,7 +386,6 @@ export const TripController = {
       next(err);
     }
   },
-
 
   async testSimulateScheduled(req: Request, res: Response, next: NextFunction) {
     try {
@@ -424,13 +422,13 @@ export const TripController = {
         pickup_lat: 13.0732,
         pickup_lng: 80.2609,
         pickup_address: 'Egmore, Chennai, Tamil Nadu, India',
-        drop_lat: 12.9830,
+        drop_lat: 12.983,
         drop_lng: 80.2594,
         drop_address: 'Thiruvanmiyur, Chennai, Tamil Nadu, India',
-        distance_km: 13.90,
-        base_fare: 300.00,
+        distance_km: 13.9,
+        base_fare: 300.0,
         driver_allowance: 99.95,
-        platform_fee: 1.00,
+        platform_fee: 1.0,
         total_fare: 399.95,
         booking_type: BookingType.SCHEDULED,
       };
@@ -464,7 +462,12 @@ export const TripController = {
         }
       );
 
-      return successResponse(res, 200, 'Simulated scheduled trip created and dispatched to driver', trip);
+      return successResponse(
+        res,
+        200,
+        'Simulated scheduled trip created and dispatched to driver',
+        trip
+      );
     } catch (err: any) {
       logger.error(`testSimulateScheduled error: ${err.message}`);
       next(err);
@@ -503,13 +506,13 @@ export const TripController = {
         pickup_lat: 13.0732,
         pickup_lng: 80.2609,
         pickup_address: 'Egmore, Chennai, Tamil Nadu, India',
-        drop_lat: 12.9830,
+        drop_lat: 12.983,
         drop_lng: 80.2594,
         drop_address: 'Thiruvanmiyur, Chennai, Tamil Nadu, India',
-        distance_km: 13.90,
-        base_fare: 300.00,
+        distance_km: 13.9,
+        base_fare: 300.0,
         driver_allowance: 99.95,
-        platform_fee: 1.00,
+        platform_fee: 1.0,
         total_fare: 399.95,
         booking_type: BookingType.LIVE,
       };
@@ -542,13 +545,18 @@ export const TripController = {
         }
       );
 
-      return successResponse(res, 200, 'Simulated live trip created and dispatched to driver', trip);
+      return successResponse(
+        res,
+        200,
+        'Simulated live trip created and dispatched to driver',
+        trip
+      );
     } catch (err: any) {
       logger.error(`testSimulateLive error: ${err.message}`);
       next(err);
     }
   },
-  
+
   async getActiveTrip(req: Request, res: Response, next: NextFunction) {
     try {
       const driverId = req.query.driver_id || (req as any).user?.id;
@@ -607,18 +615,18 @@ export const TripController = {
       const trip = await TripService.updateTripStatus(io, trip_id, trip_status);
       if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-      notifyAdmin('TRIP_STATUS_UPDATE', { 
-        id: trip.trip_id, 
-        status: trip.trip_status 
+      notifyAdmin('TRIP_STATUS_UPDATE', {
+        id: trip.trip_id,
+        status: trip.trip_status,
       });
 
       return res.status(200).json({
         success: true,
-        message: "Trip status updated successfully",
-        trip
+        message: 'Trip status updated successfully',
+        trip,
       });
     } catch (error) {
-      return res.status(500).json({ success: false, message: "Could not update trip" });
+      return res.status(500).json({ success: false, message: 'Could not update trip' });
     }
   },
 
@@ -629,7 +637,12 @@ export const TripController = {
       if (!driver_id) throw { statusCode: 400, message: 'driver_id is required' };
 
       const trip = await TripService.assignToDriver(id as string, driver_id);
-      return successResponse(res, 200, 'Trip assigned to driver successfully. Waiting for acceptance.', trip);
+      return successResponse(
+        res,
+        200,
+        'Trip assigned to driver successfully. Waiting for acceptance.',
+        trip
+      );
     } catch (err: any) {
       logger.error(`assignToDriver error: ${err.message}`);
       next(err);

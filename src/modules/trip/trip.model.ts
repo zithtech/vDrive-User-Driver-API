@@ -7,7 +7,7 @@ import {
   ServiceType,
   TripStatus,
   VehicleType,
-  TransmissionType
+  TransmissionType,
 } from '../../enums/trip.enums';
 
 //user-driver
@@ -82,16 +82,10 @@ export interface TripDetailsType {
   car_number: string | null;
   car_type: string | null;
 
-  ride_type: "ONE_WAY" | "ROUND_TRIP" | "DAILY" | "OUTSTATION";
-  service_type: "DRIVER_ONLY" | "CAB+DRIVER";
+  ride_type: 'ONE_WAY' | 'ROUND_TRIP' | 'DAILY' | 'OUTSTATION';
+  service_type: 'DRIVER_ONLY' | 'CAB+DRIVER';
 
-  trip_status:
-  | "LIVE"
-  | "COMPLETED"
-  | "CANCELLED"
-  | "UPCOMING"
-  | "REQUESTED"
-  | "MID-CANCELLED";
+  trip_status: 'LIVE' | 'COMPLETED' | 'CANCELLED' | 'UPCOMING' | 'REQUESTED' | 'MID-CANCELLED';
 
   original_scheduled_start_time: string;
   scheduled_start_time: string;
@@ -136,11 +130,11 @@ export interface TripDetailsType {
 
   subtotal: number;
   paid_amount: number;
-  payment_status: "PAID" | "PENDING" | "FAILED";
-  payment_method: "UPI" | "CASH" | "CARD" | "WALLET";
+  payment_status: 'PAID' | 'PENDING' | 'FAILED';
+  payment_method: 'UPI' | 'CASH' | 'CARD' | 'WALLET';
 
   cancel_reason: string | null;
-  cancel_by: "USER" | "DRIVER" | "ADMIN" | null;
+  cancel_by: 'USER' | 'DRIVER' | 'ADMIN' | null;
 
   notes: string | null;
 

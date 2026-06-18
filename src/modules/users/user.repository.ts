@@ -38,9 +38,7 @@ export const UserRepository = {
   },
 
   async createUser(data: User): Promise<User | null> {
-
     try {
-
       const result = await query(
         `INSERT INTO users (first_name, last_name, full_name, phone_number, alternate_contact, role, gender, date_of_birth, status, email, device_id, onboarding_status, otp, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()) RETURNING *;`,
         [
@@ -63,7 +61,6 @@ export const UserRepository = {
     } catch (error) {
       throw error;
     }
-
   },
 
   async updateUser(id: string, setQuery: string, values: any[]): Promise<User | null> {
@@ -134,9 +131,6 @@ export const UserRepository = {
   },
 
   async incrementStats(id: string): Promise<void> {
-    await query(
-      `UPDATE users SET total_trips = COALESCE(total_trips, 0) + 1 WHERE id = $1`,
-      [id]
-    );
-  }
+    await query(`UPDATE users SET total_trips = COALESCE(total_trips, 0) + 1 WHERE id = $1`, [id]);
+  },
 };

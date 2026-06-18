@@ -51,15 +51,22 @@ export class DriverDocumentsService {
       DocumentType.AADHAAR_CARD,
       DocumentType.DRIVING_LICENSE,
       DocumentType.PAN_CARD,
-      DocumentType.PROFILE_SELFIE
+      DocumentType.PROFILE_SELFIE,
     ];
 
-    const hasAllMandatory = mandatoryTypes.every(type =>
-      allDocs.some(d => d.document_type === type && (d.status === DocumentStatus.VERIFIED || d.status === DocumentStatus.PENDING))
+    const hasAllMandatory = mandatoryTypes.every((type) =>
+      allDocs.some(
+        (d) =>
+          d.document_type === type &&
+          (d.status === DocumentStatus.VERIFIED || d.status === DocumentStatus.PENDING)
+      )
     );
 
     if (!hasAllMandatory) {
-      throw { statusCode: 400, message: 'Please upload all mandatory documents before submitting.' };
+      throw {
+        statusCode: 400,
+        message: 'Please upload all mandatory documents before submitting.',
+      };
     }
 
     await query(
@@ -78,16 +85,20 @@ export class DriverDocumentsService {
       DocumentType.AADHAAR_CARD,
       DocumentType.DRIVING_LICENSE,
       DocumentType.PAN_CARD,
-      DocumentType.PROFILE_SELFIE
+      DocumentType.PROFILE_SELFIE,
     ];
 
-    const mandatoryDocs = allDocs.filter(d => mandatoryTypes.includes(d.document_type as DocumentType));
+    const mandatoryDocs = allDocs.filter((d) =>
+      mandatoryTypes.includes(d.document_type as DocumentType)
+    );
 
     let overallStatus = 'pending';
     let onboardingStatusUpdate = null;
 
-    const allVerified = mandatoryDocs.length === mandatoryTypes.length && mandatoryDocs.every(d => d.status === DocumentStatus.VERIFIED);
-    const anyRejected = mandatoryDocs.some(d => d.status === DocumentStatus.REJECTED);
+    const allVerified =
+      mandatoryDocs.length === mandatoryTypes.length &&
+      mandatoryDocs.every((d) => d.status === DocumentStatus.VERIFIED);
+    const anyRejected = mandatoryDocs.some((d) => d.status === DocumentStatus.REJECTED);
 
     if (allVerified) {
       overallStatus = 'verified';
@@ -99,12 +110,12 @@ export class DriverDocumentsService {
 
     const kycData = {
       overallStatus,
-      verifiedAt: overallStatus === 'verified' ? new Date().toISOString() : null
+      verifiedAt: overallStatus === 'verified' ? new Date().toISOString() : null,
     };
 
     // ── SYNC PROFILE PHOTO ──
     // If we have a PROFILE_SELFIE, sync it to the main profile_pic_url field
-    const selfieDoc = allDocs.find(d => d.document_type === DocumentType.PROFILE_SELFIE);
+    const selfieDoc = allDocs.find((d) => d.document_type === DocumentType.PROFILE_SELFIE);
     let selfieUrl = null;
     if (selfieDoc && selfieDoc.document_url) {
       const rawUrl = selfieDoc.document_url;
@@ -124,7 +135,7 @@ export class DriverDocumentsService {
       }
     }
 
-    let sql = 'UPDATE drivers SET kyc = COALESCE(kyc, \'{}\'::jsonb) || $1';
+    let sql = "UPDATE drivers SET kyc = COALESCE(kyc, '{}'::jsonb) || $1";
     const params: any[] = [JSON.stringify(kycData), driverId];
 
     if (onboardingStatusUpdate) {
@@ -141,7 +152,9 @@ export class DriverDocumentsService {
 
     await query(sql, params);
 
-    logger.info(`Driver ${driverId} KYC status synced to ${overallStatus} and onboarding status to ${onboardingStatusUpdate || 'unchanged'}`);
+    logger.info(
+      `Driver ${driverId} KYC status synced to ${overallStatus} and onboarding status to ${onboardingStatusUpdate || 'unchanged'}`
+    );
 
     // Send Notification on approval or rejection
     if (onboardingStatusUpdate) {
@@ -154,20 +167,22 @@ export class DriverDocumentsService {
               body: 'Your documents have been verified. You can now go online and start earning.',
               data: {
                 type: 'ACCOUNT_APPROVED',
-                onboarding_status: DriverOnboardingStatus.DOCUMENTS_APPROVED
-              }
+                onboarding_status: DriverOnboardingStatus.DOCUMENTS_APPROVED,
+              },
             });
           } else if (onboardingStatusUpdate === DriverOnboardingStatus.DOCS_REJECTED) {
-            const rejectedDocs = mandatoryDocs.filter(d => d.status === DocumentStatus.REJECTED);
-            const docNames = rejectedDocs.map(d => d.document_type.replace(/_/g, ' ').toUpperCase()).join(', ');
-            
+            const rejectedDocs = mandatoryDocs.filter((d) => d.status === DocumentStatus.REJECTED);
+            const docNames = rejectedDocs
+              .map((d) => d.document_type.replace(/_/g, ' ').toUpperCase())
+              .join(', ');
+
             await notificationService.sendPushNotification(driver.fcm_token, {
               title: 'Documents Need Correction',
               body: `Your ${docNames} was rejected. Please re-upload it with clear images.`,
               data: {
                 type: 'DOCS_REJECTED',
-                onboarding_status: DriverOnboardingStatus.DOCS_REJECTED
-              }
+                onboarding_status: DriverOnboardingStatus.DOCS_REJECTED,
+              },
             });
           }
         }
@@ -184,7 +199,12 @@ export class DriverDocumentsService {
     rejection_reason?: string
   ): Promise<DriverDocument | null> {
     logger.info(`Verifying document ${id} with status: ${status}`);
-    const document = await DriverDocumentsRepository.updateStatus(id, status, remarks, rejection_reason);
+    const document = await DriverDocumentsRepository.updateStatus(
+      id,
+      status,
+      remarks,
+      rejection_reason
+    );
 
     if (document) {
       // Sync overall KYC status for the driver

@@ -36,22 +36,22 @@ router.get('/media/proxy', async (req, res) => {
   try {
     const { url } = req.query;
     if (!url || typeof url !== 'string') return res.status(400).send('URL is required');
-    
+
     if (url.includes('s3.eu-north-1.amazonaws.com')) {
       let key = url.split('.amazonaws.com/')[1];
       if (!key) return res.status(400).send('Invalid S3 URL');
-      
+
       // Strip any query parameters
       key = key.split('?')[0];
-      
+
       const { s3Service } = require('../modules/s3/s3.service');
       const signedUrl = await s3Service.getReadUrl(decodeURIComponent(key));
-      
+
       // Allow cross-origin loading for images to prevent browser blocking (CORP/CORS)
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       return res.redirect(signedUrl);
     }
-    
+
     return res.status(400).send('Only S3 URLs are supported for proxying currently');
   } catch (error) {
     logger.error('Media proxy error:', error);
@@ -87,7 +87,4 @@ router.use('/drivers/trip-verification', tripVerificationRoutes);
 router.use('/s3', s3Routes);
 router.use('/coupons', couponRoutes);
 
-
 export default router;
-
-

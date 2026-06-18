@@ -2,8 +2,8 @@
 import { query } from '../../shared/database';
 
 export const simulationRepository = {
-    async updateDriverLocation(tripId: string, lat: number, lng: number, heading: number) {
-        const sql = `
+  async updateDriverLocation(tripId: string, lat: number, lng: number, heading: number) {
+    const sql = `
             UPDATE trips 
             SET current_lat = $1, 
                 current_lng = $2, 
@@ -12,10 +12,10 @@ export const simulationRepository = {
             RETURNING *; -- Returns the updated row so the service knows it succeeded
         `;
 
-        // Match the variables to the parameters exactly:
-        // $1 -> lat, $2 -> lng, $3 -> heading, $4 -> tripId
-        const { rows } = await query(sql, [lat, lng, heading, tripId]);
+    // Match the variables to the parameters exactly:
+    // $1 -> lat, $2 -> lng, $3 -> heading, $4 -> tripId
+    const { rows } = await query(sql, [lat, lng, heading, tripId]);
 
-        return rows[0];
-    }
+    return rows[0];
+  },
 };

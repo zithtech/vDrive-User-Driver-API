@@ -1,6 +1,13 @@
 import { Router } from 'express';
 import { DriverController } from './driver.controller';
-import { createDriverValidator, findNearbyDriversValidator, getDriverValidator, getDriversValidator, updateDriverValidator, availableDriversForAssignmentValidator } from './driver.validator';
+import {
+  createDriverValidator,
+  findNearbyDriversValidator,
+  getDriverValidator,
+  getDriversValidator,
+  updateDriverValidator,
+  availableDriversForAssignmentValidator,
+} from './driver.validator';
 import { isAuthenticatedOrService } from '../../shared/serviceAuthentication';
 
 const router = Router();
@@ -32,6 +39,10 @@ router.get('/wallet/:id/balance', DriverController.getWalletBalance);
 router.get('/wallet/:id/transactions', DriverController.getWalletTransactions);
 router.get('/today-overview/:id', DriverController.getTodayOverview);
 router.post('/search', findNearbyDriversValidator, DriverController.findNearbyDrivers);
-router.post('/available-for-assignment', availableDriversForAssignmentValidator, DriverController.getAvailableDriversForAssignment);
+router.post(
+  '/available-for-assignment',
+  availableDriversForAssignmentValidator,
+  DriverController.getAvailableDriversForAssignment
+);
 
 export default router;

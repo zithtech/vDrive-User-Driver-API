@@ -11,7 +11,7 @@ export const PromoController = {
     try {
       const driverId = req.user.id;
       const { code, amount } = req.body;
-      
+
       if (!code || amount === undefined) {
         return res.status(400).json({ success: false, message: 'Code and amount are required' });
       }
@@ -85,5 +85,5 @@ export const PromoController = {
     } catch (error: any) {
       next(error);
     }
-  }
+  },
 };

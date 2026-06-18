@@ -1,45 +1,44 @@
-
 import { SendMailOptions } from 'nodemailer';
 import { EmailRepository } from './email.repository';
 import { Attachment } from 'nodemailer/lib/mailer';
 import config from '../../config';
 
 interface InvoicePayload {
-    recipient: string;
-    filename: string;
-    base64_data: string;
-    subject: string;
+  recipient: string;
+  filename: string;
+  base64_data: string;
+  subject: string;
 }
 
 export const EmailService = {
-    /**
-     * Prepares the email content and attachment buffer, then delegates sending to the repository.
-     * @param payload - Data received from the frontend (recipient, base64 data, etc.).
-     */
-    async sendInvoiceEmail(payload: InvoicePayload): Promise<void> {
-        const { recipient, filename, base64_data, subject } = payload;
+  /**
+   * Prepares the email content and attachment buffer, then delegates sending to the repository.
+   * @param payload - Data received from the frontend (recipient, base64 data, etc.).
+   */
+  async sendInvoiceEmail(payload: InvoicePayload): Promise<void> {
+    const { recipient, filename, base64_data, subject } = payload;
 
-        // 1. Convert Base64 string back into a Buffer
-        // This is the core business logic of the service layer
-        const pdfBuffer: Buffer = Buffer.from(base64_data, 'base64');
+    // 1. Convert Base64 string back into a Buffer
+    // This is the core business logic of the service layer
+    const pdfBuffer: Buffer = Buffer.from(base64_data, 'base64');
 
-        // 2. Construct the attachment object
-        const attachment: Attachment = {
-            filename: filename,
-            content: pdfBuffer,
-            contentType: 'application/pdf',
-        };
+    // 2. Construct the attachment object
+    const attachment: Attachment = {
+      filename: filename,
+      content: pdfBuffer,
+      contentType: 'application/pdf',
+    };
 
-        // 3. Define the mail options
-        const mailOptions: SendMailOptions = {
-            from: `"VDrive" <${process.env.EMAIL_USER}>`,
-            // from: {
-            //     name: 'VDrive',
-            //     address: process.env.EMAIL_USER || 'no-reply@vdrive.com'
-            // },
-            to: recipient,
-            subject: subject,
-            html: `
+    // 3. Define the mail options
+    const mailOptions: SendMailOptions = {
+      from: `"VDrive" <${process.env.EMAIL_USER}>`,
+      // from: {
+      //     name: 'VDrive',
+      //     address: process.env.EMAIL_USER || 'no-reply@vdrive.com'
+      // },
+      to: recipient,
+      subject: subject,
+      html: `
            <p style="margin-bottom: 20px;">Dear Customer,</p>
         <p style="margin-bottom: 20px;">Thanks for riding with <span style="color: #007bff; font-weight: bold;">VDrive!</span></p>
 
@@ -82,26 +81,26 @@ export const EmailService = {
             </p>
         </div>
             `,
-            attachments: [attachment],
-        };
+      attachments: [attachment],
+    };
 
-        // 4. Delegate to the repository
-        await EmailRepository.sendMail(mailOptions);
-    },
+    // 4. Delegate to the repository
+    await EmailRepository.sendMail(mailOptions);
+  },
 
-    /**
-     * Sends a welcome greeting email to a newly registered customer.
-     * @param recipient - The email address of the customer.
-     * @param name - The name of the customer.
-     */
-    async sendWelcomeEmail(recipient: string, name: string): Promise<void> {
-        if (!recipient) return;
+  /**
+   * Sends a welcome greeting email to a newly registered customer.
+   * @param recipient - The email address of the customer.
+   * @param name - The name of the customer.
+   */
+  async sendWelcomeEmail(recipient: string, name: string): Promise<void> {
+    if (!recipient) return;
 
-        const mailOptions: SendMailOptions = {
-            from: `"VDrive" <${process.env.EMAIL_USER || config.email.user}>`,
-            to: recipient,
-            subject: 'Welcome to VDrive!',
-            html: `
+    const mailOptions: SendMailOptions = {
+      from: `"VDrive" <${process.env.EMAIL_USER || config.email.user}>`,
+      to: recipient,
+      subject: 'Welcome to VDrive!',
+      html: `
             <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
                 <h2 style="color: #007bff; text-align: center;">Welcome to VDrive!</h2>
                 <p style="margin-bottom: 20px;">Hi ${name || 'Customer'},</p>
@@ -118,30 +117,31 @@ export const EmailService = {
                 </div>
             </div>
             `,
-        };
+    };
 
-        try {
-            await EmailRepository.sendMail(mailOptions);
-        } catch (error) {
-            console.error('Failed to send welcome email:', error);
-        }
-    },
+    try {
+      await EmailRepository.sendMail(mailOptions);
+    } catch (error) {
+      console.error('Failed to send welcome email:', error);
+    }
+  },
 
-    /**
-     * Sends a coupon notification email to a user.
-     */
-    async sendCouponEmail(recipient: string, name: string, coupon: any): Promise<void> {
-        if (!recipient) return;
+  /**
+   * Sends a coupon notification email to a user.
+   */
+  async sendCouponEmail(recipient: string, name: string, coupon: any): Promise<void> {
+    if (!recipient) return;
 
-        const discountText = coupon.discount_type === 'PERCENTAGE' 
-            ? `${coupon.discount_value}% OFF` 
-            : `₹${coupon.discount_value} OFF`;
+    const discountText =
+      coupon.discount_type === 'PERCENTAGE'
+        ? `${coupon.discount_value}% OFF`
+        : `₹${coupon.discount_value} OFF`;
 
-        const mailOptions: SendMailOptions = {
-            from: `"VDrive Offers" <${process.env.EMAIL_USER || config.email.user}>`,
-            to: recipient,
-            subject: `Exclusive Offer: Get ${discountText} on your next ride!`,
-            html: `
+    const mailOptions: SendMailOptions = {
+      from: `"VDrive Offers" <${process.env.EMAIL_USER || config.email.user}>`,
+      to: recipient,
+      subject: `Exclusive Offer: Get ${discountText} on your next ride!`,
+      html: `
             <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
                 <div style="background-color: #007bff; padding: 30px; text-align: center;">
                     <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold; letter-spacing: 1px;">Exclusive Offer!</h1>
@@ -180,12 +180,12 @@ export const EmailService = {
                 </div>
             </div>
             `,
-        };
+    };
 
-        try {
-            await EmailRepository.sendMail(mailOptions);
-        } catch (error) {
-            console.error(`Failed to send coupon email to ${recipient}:`, error);
-        }
+    try {
+      await EmailRepository.sendMail(mailOptions);
+    } catch (error) {
+      console.error(`Failed to send coupon email to ${recipient}:`, error);
     }
+  },
 };

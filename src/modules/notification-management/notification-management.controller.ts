@@ -4,10 +4,10 @@ import { NotificationService } from './notification-management.service';
 export const dispatchNotification = async (req: Request, res: Response) => {
   try {
     const result = await NotificationService.queueDispatchOnly(req.body);
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       message: 'Campaign queued for dispatch',
-      data: result 
+      data: result,
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });

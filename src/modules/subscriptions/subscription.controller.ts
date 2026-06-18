@@ -48,9 +48,14 @@ export const SubscriptionController = {
   async getAllActiveSubscriptions(req: Request, res: Response, next: NextFunction) {
     try {
       const subscriptions = await SubscriptionService.getAllActiveSubscriptions();
-      return successResponse(res, 200, 'All active subscriptions fetched successfully', subscriptions);
+      return successResponse(
+        res,
+        200,
+        'All active subscriptions fetched successfully',
+        subscriptions
+      );
     } catch (error: any) {
       next(error);
     }
-  }
+  },
 };

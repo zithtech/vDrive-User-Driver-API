@@ -111,7 +111,11 @@ export const UserController = {
         emergency_contacts: rest.emergency_contacts,
         settings_preferences: rest.settings_preferences,
         profile_url: rest.profile_url || '',
-        onboarding_status: rest.onboarding_status || (existingUser.onboarding_status === OnboardingStatus.PHONE_VERIFIED ? OnboardingStatus.COMPLETED : existingUser.onboarding_status),
+        onboarding_status:
+          rest.onboarding_status ||
+          (existingUser.onboarding_status === OnboardingStatus.PHONE_VERIFIED
+            ? OnboardingStatus.COMPLETED
+            : existingUser.onboarding_status),
       };
 
       updateUserData.full_name = formFullName(finalFirstName, finalLastName);
@@ -119,8 +123,10 @@ export const UserController = {
       const updatedUser = await UserService.updateUser(id as string, updateData);
 
       if (!existingUser.email && updateData.email && existingUser.role !== 'driver') {
-        EmailService.sendWelcomeEmail(updateData.email, updateData.first_name || updatedUser?.full_name || 'Customer')
-          .catch(err => logger.error(`Welcome email failed for ${updateData.email}: ${err}`));
+        EmailService.sendWelcomeEmail(
+          updateData.email,
+          updateData.first_name || updatedUser?.full_name || 'Customer'
+        ).catch((err) => logger.error(`Welcome email failed for ${updateData.email}: ${err}`));
       }
 
       return successResponse(res, 200, 'User updated successfully', updatedUser);
@@ -143,7 +149,7 @@ export const UserController = {
   async blockUser(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const {notes} = req.body;
+      const { notes } = req.body;
       const user = await UserService.blockUser(id as string, notes);
       return successResponse(res, 200, 'User blocked successfully', user);
     } catch (err: any) {
@@ -164,8 +170,8 @@ export const UserController = {
 
   async disableUser(req: Request, res: Response, next: NextFunction) {
     try {
-      const {id} = req.params;
-      const {notes} = req.body;
+      const { id } = req.params;
+      const { notes } = req.body;
       const user = await UserService.disableUser(id as string, notes);
       return successResponse(res, 200, 'User disabled successfully', user);
     } catch (err: any) {
@@ -186,8 +192,8 @@ export const UserController = {
 
   async suspendUser(req: Request, res: Response, next: NextFunction) {
     try {
-      const {id} = req.params;
-      const {notes} = req.body;
+      const { id } = req.params;
+      const { notes } = req.body;
       const user = await UserService.suspendUser(id as string, notes);
       return successResponse(res, 200, 'User suspended successfully', user);
     } catch (err: any) {
@@ -241,31 +247,30 @@ export const UserController = {
     }
   },
 
-   async getUploadUrl(req: Request, res: Response, next: NextFunction) {
-      try {
-        const { userid } = req.params;
-        const { documentType, contentType } = req.body;
-        
-        const key = `user-profiles/${userid}/${documentType}`;
-        const result = await s3Service.getUploadUrl(key, contentType);
-        
-        return successResponse(res, 200, 'Upload URL generated successfully', result);
-      } catch (error) {
-        next(error);
-      }
-    },
+  async getUploadUrl(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { userid } = req.params;
+      const { documentType, contentType } = req.body;
 
-    async deleteDocument(req: Request, res: Response, next: NextFunction) {
-      try {
-        const {userid} = req.params;
-        const {documentType} = req.body;
-        const key = `user-profiles/${userid}/${documentType}`;
-        const result = await s3Service.deleteFile(key as string);
-        return successResponse(res, 200, 'Document deleted successfully', result);
-      } catch (err: any) {
-        logger.error(`deleteDocument error: ${err.message}`);
-        next(err);
-      }
+      const key = `user-profiles/${userid}/${documentType}`;
+      const result = await s3Service.getUploadUrl(key, contentType);
+
+      return successResponse(res, 200, 'Upload URL generated successfully', result);
+    } catch (error) {
+      next(error);
     }
+  },
 
+  async deleteDocument(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { userid } = req.params;
+      const { documentType } = req.body;
+      const key = `user-profiles/${userid}/${documentType}`;
+      const result = await s3Service.deleteFile(key as string);
+      return successResponse(res, 200, 'Document deleted successfully', result);
+    } catch (err: any) {
+      logger.error(`deleteDocument error: ${err.message}`);
+      next(err);
+    }
+  },
 };

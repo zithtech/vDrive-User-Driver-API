@@ -47,11 +47,8 @@ router.get('/me', AuthController.getMe);
 
 router.get('/get-deleted-user', AuthController.getDeletedUser);
 
-
 router.post('/signout/:id', validateParams(UserValidation.idValidation), AuthController.signOut);
 
-
 router.get('/validate-session', authMiddleware, AuthController.validateSession);
-
 
 export default router;

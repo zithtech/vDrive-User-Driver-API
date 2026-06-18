@@ -48,7 +48,7 @@ export const SubscriptionService = {
     if (input.use_reward_balance && driver?.credit?.balance) {
       const availableBalance = Number(driver.credit.balance || 0);
       const remainingAfterPromo = Math.max(0, amount - discountAmount);
-      
+
       // Use balance up to the remaining amount
       rewardAmountUsed = Math.min(availableBalance, remainingAfterPromo);
       discountAmount += rewardAmountUsed;
@@ -68,13 +68,17 @@ export const SubscriptionService = {
 
     amount = Math.max(0, amount - discountAmount);
 
-    // If amount is now 0 (fully covered by rewards/promos), we still need an order_id for the UI flow 
+    // If amount is now 0 (fully covered by rewards/promos), we still need an order_id for the UI flow
     // unless we refactor the whole frontend. For now, we'll create a 1 INR order if it's 0 to keep Razorpay happy,
     // OR return a special flag for "FREE" purchase.
     // Let's stick to a full Razorpay order for >= 1 INR.
-    
-    let order: any = { id: `free_${driverId.substring(0, 8)}_${Date.now()}`, amount: 0, currency: 'INR' };
-    
+
+    let order: any = {
+      id: `free_${driverId.substring(0, 8)}_${Date.now()}`,
+      amount: 0,
+      currency: 'INR',
+    };
+
     if (amount > 0) {
       const options = {
         amount: Math.round(amount * 100), // Razorpay expects amount in paise
@@ -94,14 +98,14 @@ export const SubscriptionService = {
       status: 'pending',
       applied_promo_id: appliedPromoId,
       discount_amount: discountAmount,
-      reward_amount_used: rewardAmountUsed
+      reward_amount_used: rewardAmountUsed,
     });
 
     return {
       order_id: order.id,
       amount: order.amount,
       currency: order.currency,
-      is_free: amount === 0
+      is_free: amount === 0,
     };
   },
 
@@ -137,19 +141,31 @@ export const SubscriptionService = {
       await client.query('BEGIN');
 
       // Update payment status
-      await SubscriptionRepository.updatePaymentStatus(razorpay_order_id, 'completed', razorpay_payment_id, razorpay_signature, client);
+      await SubscriptionRepository.updatePaymentStatus(
+        razorpay_order_id,
+        'completed',
+        razorpay_payment_id,
+        razorpay_signature,
+        client
+      );
 
       // Record promo usage if applicable
       if (payment.applied_promo_id) {
-        await PromoService.usePromo(Number(payment.applied_promo_id), driverId, payment.id, Number(payment.discount_amount || 0), client);
+        await PromoService.usePromo(
+          Number(payment.applied_promo_id),
+          driverId,
+          payment.id,
+          Number(payment.discount_amount || 0),
+          client
+        );
       }
 
       // 4. Deduct Wallet Balance (ATOM-SYNC)
       if (Number(payment.reward_amount_used || 0) > 0) {
         await DriverRepository.deductCredit(
-          driverId, 
-          Number(payment.reward_amount_used), 
-          'SUBSCRIPTION_PAYMENT', 
+          driverId,
+          Number(payment.reward_amount_used),
+          'SUBSCRIPTION_PAYMENT',
           `Applied towards ${payment.billing_cycle} plan recharge`,
           client
         );
@@ -170,14 +186,17 @@ export const SubscriptionService = {
       else if (payment.billing_cycle === 'month') expiryDate.setMonth(expiryDate.getMonth() + 1);
 
       // Create new subscription
-      await SubscriptionRepository.createSubscription({
-        driver_id: driverId,
-        plan_id: payment.plan_id,
-        billing_cycle: payment.billing_cycle as any,
-        start_date: startDate,
-        expiry_date: expiryDate,
-        status: 'active',
-      }, client);
+      await SubscriptionRepository.createSubscription(
+        {
+          driver_id: driverId,
+          plan_id: payment.plan_id,
+          billing_cycle: payment.billing_cycle as any,
+          start_date: startDate,
+          expiry_date: expiryDate,
+          status: 'active',
+        },
+        client
+      );
 
       // Update driver subscription status
       await client.query(
@@ -193,26 +212,35 @@ export const SubscriptionService = {
 
       // Trigger webhook asynchronously for Admin App real-time notifications
       try {
-        const driverRes = await client.query('SELECT full_name FROM drivers WHERE id = $1', [driverId]);
-        const planRes = await client.query('SELECT plan_name FROM recharge_plans WHERE id = $1', [payment.plan_id]);
-        
+        const driverRes = await client.query('SELECT full_name FROM drivers WHERE id = $1', [
+          driverId,
+        ]);
+        const planRes = await client.query('SELECT plan_name FROM recharge_plans WHERE id = $1', [
+          payment.plan_id,
+        ]);
+
         const driverName = driverRes.rows[0]?.full_name || 'A driver';
         const planName = planRes.rows[0]?.plan_name || 'a subscription plan';
 
         const actionText = isRenewal ? 'renewed' : 'activated';
 
         const webhookUrl = `${config.adminBackendUrl}/api/webhooks/driver-events`;
-        axios.post(webhookUrl, {
-          eventType: isRenewal ? 'SUBSCRIPTION_RENEWED' : 'SUBSCRIPTION_ACTIVATED',
-          message: `Driver ${driverName} ${actionText} ${planName}`,
-          data: { driverId, planId: payment.plan_id, driverName, planName, isRenewal }
-        }, {
-          headers: { 'x-api-key': config.internalServiceApiKey }
-        }).catch(err => logger.error(`Webhook trigger failed: ${err.message}`));
+        axios
+          .post(
+            webhookUrl,
+            {
+              eventType: isRenewal ? 'SUBSCRIPTION_RENEWED' : 'SUBSCRIPTION_ACTIVATED',
+              message: `Driver ${driverName} ${actionText} ${planName}`,
+              data: { driverId, planId: payment.plan_id, driverName, planName, isRenewal },
+            },
+            {
+              headers: { 'x-api-key': config.internalServiceApiKey },
+            }
+          )
+          .catch((err) => logger.error(`Webhook trigger failed: ${err.message}`));
       } catch (e) {
-        // Ignore 
+        // Ignore
       }
-
     } catch (error) {
       await client.query('ROLLBACK');
       logger.error(`Transaction failed, rolled back: ${error}`);
@@ -233,11 +261,11 @@ export const SubscriptionService = {
       subscription: {
         ...subscription,
         plan: plan,
-      }
+      },
     };
   },
 
   async getAllActiveSubscriptions() {
     return await SubscriptionRepository.getAllActiveSubscriptions();
-  }
+  },
 };

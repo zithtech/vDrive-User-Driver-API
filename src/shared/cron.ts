@@ -24,12 +24,12 @@ export const initCronJobs = () => {
       await releaseLock(lockKey);
     }
   });
- 
+
   // Trip Scheduler: Every minute
   cron.schedule('* * * * *', async () => {
     const lockKey = 'trip_scheduler_job';
     const hasLock = await acquireLock(lockKey, 50); // 50s TTL for a 1-min interval
-    
+
     if (!hasLock) {
       logger.debug('Trip Scheduler job skipped: already running on another instance.');
       return;
@@ -98,7 +98,7 @@ export const initCronJobs = () => {
   cron.schedule('*/5 * * * *', async () => {
     const lockKey = 'driver_location_sync_job';
     const hasLock = await acquireLock(lockKey, 280); // 280s TTL for a 5-min interval
-    
+
     if (!hasLock) {
       logger.debug('Driver Location Sync job skipped: already running on another instance.');
       return;
@@ -117,20 +117,21 @@ export const initCronJobs = () => {
       }
 
       const coordinates = await redis.geopos('driver_locations', ...driverIds);
-      
+
       const client = await getClient();
       try {
         await client.query('BEGIN');
-        
+
         let updateCount = 0;
         for (let i = 0; i < driverIds.length; i++) {
           const driverId = driverIds[i];
           const coord = coordinates[i];
           if (coord) {
             const [lng, lat] = coord;
-            const address = await redis.hget(`driver_info:${driverId}`, 'address') || '';
+            const address = (await redis.hget(`driver_info:${driverId}`, 'address')) || '';
 
-            await client.query(`
+            await client.query(
+              `
               UPDATE drivers 
               SET 
                   current_lat = $1,
@@ -138,7 +139,9 @@ export const initCronJobs = () => {
                   location = ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
                   last_active = NOW()
               WHERE id = $3 AND is_deleted = FALSE
-            `, [parseFloat(lat), parseFloat(lng), driverId]);
+            `,
+              [parseFloat(lat), parseFloat(lng), driverId]
+            );
             updateCount++;
           }
         }

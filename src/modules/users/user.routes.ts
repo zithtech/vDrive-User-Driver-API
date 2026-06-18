@@ -10,7 +10,11 @@ router.get('/', UserController.getUsers);
 
 router.get('/:id', validateParams(UserValidation.idValidation), UserController.getUserById);
 
-router.post('/add-user', validateBody(UserValidation.createUserValidation), UserController.createUser);
+router.post(
+  '/add-user',
+  validateBody(UserValidation.createUserValidation),
+  UserController.createUser
+);
 
 router.patch(
   '/update/:id',
@@ -21,10 +25,10 @@ router.patch(
 
 router.patch(
   '/add-emergency-contacts',
-   validateParams(UserValidation.idValidation),
+  validateParams(UserValidation.idValidation),
   validateBody(UserValidation.updateUserValidation),
   UserController.updateUser
-)
+);
 
 router.delete('/:id', validateParams(UserValidation.idValidation), UserController.deleteUser);
 
@@ -62,8 +66,8 @@ router.get('/search', validateQuery(UserValidation.searchValidation), UserContro
 router.post('/documents/:userid/upload-url', UserController.getUploadUrl);
 
 //fcm-token-update
-router.post('/update-fcm-token', UserController.updateToken)
+router.post('/update-fcm-token', UserController.updateToken);
 
-router.delete('/documents/:userid/delete', UserController.deleteDocument)
+router.delete('/documents/:userid/delete', UserController.deleteDocument);
 
 export default router;

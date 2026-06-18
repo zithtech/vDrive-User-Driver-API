@@ -1,4 +1,3 @@
-
 import { query } from '../../shared/database';
 import { logger } from '../../shared/logger';
 
@@ -31,7 +30,12 @@ export const PromoNotificationRepository = {
   /**
    * Fetches drivers to notify based on target criteria
    */
-  async getTargetDrivers(targetType: string, specificDriverId?: string, limit: number = 50, offset: number = 0) {
+  async getTargetDrivers(
+    targetType: string,
+    specificDriverId?: string,
+    limit: number = 50,
+    offset: number = 0
+  ) {
     let sql = `SELECT id, email, full_name, total_trips FROM drivers WHERE status = 'active' AND email IS NOT NULL`;
     const params: any[] = [];
 
@@ -75,7 +79,12 @@ export const PromoNotificationRepository = {
   /**
    * Logs a notification attempt for a driver
    */
-  async logNotification(promoId: string | number, driverId: string, status: 'SENT' | 'FAILED', error?: string) {
+  async logNotification(
+    promoId: string | number,
+    driverId: string,
+    status: 'SENT' | 'FAILED',
+    error?: string
+  ) {
     await query(
       `INSERT INTO driver_email_logs (promo_id, driver_id, status, error_message) 
        VALUES ($1, $2, $3, $4)`,
@@ -108,5 +117,5 @@ export const PromoNotificationRepository = {
       [promoId, driverId]
     );
     return res.rows.length > 0;
-  }
+  },
 };

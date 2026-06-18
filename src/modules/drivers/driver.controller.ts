@@ -64,7 +64,7 @@ export const DriverController = {
       const offset = parseInt(req.query.offset as string) || 0;
       const status = req.query.status as string;
       const onboardingStatus = req.query.onboardingStatus as string;
-      
+
       const drivers = await DriverService.getAllDrivers(limit, offset, status, onboardingStatus);
       return successResponse(res, 200, 'Drivers fetched successfully', drivers);
     } catch (err) {
@@ -99,7 +99,7 @@ export const DriverController = {
       return res.status(err.statusCode || 500).json({
         success: false,
         message: err.message || 'Failed to reset profile data',
-        error: err
+        error: err,
       });
     }
   },
@@ -115,11 +115,16 @@ export const DriverController = {
 
       await DriverService.verifyDriverDocuments(id);
 
-      return successResponse(res, 200, 'Driver documents verified and account activated successfully', {
-        id,
-        status: 'active',
-        onboarding_status: DriverOnboardingStatus.ACTIVE
-      });
+      return successResponse(
+        res,
+        200,
+        'Driver documents verified and account activated successfully',
+        {
+          id,
+          status: 'active',
+          onboarding_status: DriverOnboardingStatus.ACTIVE,
+        }
+      );
     } catch (err: any) {
       logger.error(`adminVerifyDriver error: ${err.message || err}`);
       next(err);
@@ -150,7 +155,7 @@ export const DriverController = {
 
       // Security: only allow drivers to update their own FCM token
       if (!userId || userId !== driverId) {
-        throw { statusCode: 403, message: 'Forbidden: cannot update another driver\'s token' };
+        throw { statusCode: 403, message: "Forbidden: cannot update another driver's token" };
       }
 
       const { fcm_token } = req.body;
@@ -206,9 +211,10 @@ export const DriverController = {
         let passenger = { name: 'Customer', phone: undefined };
         try {
           if (trip.passenger_details) {
-            passenger = typeof trip.passenger_details === 'string' 
-              ? JSON.parse(trip.passenger_details) 
-              : trip.passenger_details;
+            passenger =
+              typeof trip.passenger_details === 'string'
+                ? JSON.parse(trip.passenger_details)
+                : trip.passenger_details;
           }
         } catch (e) {
           logger.error(`Error parsing passenger_details: ${e}`);
@@ -219,22 +225,30 @@ export const DriverController = {
           trip_id: trip.trip_id || trip.id,
           trip_code: trip.trip_code || trip.booking_code,
           date: new Date(trip.created_at).toLocaleDateString(),
-          time: new Date(trip.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          time: new Date(trip.created_at).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
           pickup: trip.pickup_address,
           drop: trip.drop_address,
           amount: parseFloat(trip.total_fare || '0'),
           distance_km: trip.distance_km,
           distance: trip.distance_km + ' km',
           duration: trip.trip_duration_minutes ? trip.trip_duration_minutes + ' min' : '20 min',
-          status: trip.trip_status === 'COMPLETED' ? 'Completed' : trip.trip_status === 'CANCELLED' ? 'Cancelled' : trip.trip_status,
+          status:
+            trip.trip_status === 'COMPLETED'
+              ? 'Completed'
+              : trip.trip_status === 'CANCELLED'
+                ? 'Cancelled'
+                : trip.trip_status,
           payment_method: trip.payment_method,
           payment_status: trip.payment_status,
           rating: trip.rating,
           feedback: trip.feedback,
-          customer: { 
+          customer: {
             name: trip.passenger_name || passenger.name || 'Customer',
-            phone: passenger.phone
-          }
+            phone: passenger.phone,
+          },
         };
       });
 
@@ -254,7 +268,8 @@ export const DriverController = {
       const performance = {
         rating: driver.rating || 4.8,
         acceptanceRate: 98,
-        cancellationRate: stats.cancelled_trips > 0 ? (stats.cancelled_trips / stats.total_trips) * 100 : 2,
+        cancellationRate:
+          stats.cancelled_trips > 0 ? (stats.cancelled_trips / stats.total_trips) * 100 : 2,
         totalTrips: stats.total_trips || 0,
         onlineHours,
       };
@@ -291,7 +306,7 @@ export const DriverController = {
       const driver = await DriverService.getDriverById(driverId);
       return successResponse(res, 200, 'Wallet balance fetched successfully', {
         balance: driver.credit?.balance || 0,
-        currency: 'INR'
+        currency: 'INR',
       });
     } catch (err) {
       next(err);
@@ -302,21 +317,26 @@ export const DriverController = {
     try {
       const driverId = req.params.id as string;
       const activity = await TripRepository.findActivityByDriverId(driverId);
-      
-      const transactions = activity.filter((t: any) => t.trip_status === 'COMPLETED' || t.trip_status === 'MID_CANCELLED').map((t: any) => ({
-        id: t.trip_id || t.id,
-        trip_id: t.trip_id || t.id,
-        trip_code: t.trip_code || t.booking_code,
-        title: t.trip_status === 'COMPLETED' ? 'Ride Earnings' : 'Cancellation Fee',
-        amount: parseFloat(t.total_fare || '0'),
-        date: new Date(t.created_at).toLocaleDateString(),
-        time: new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        pickup: t.pickup_address,
-        drop: t.drop_address,
-        distance: t.distance_km ? `${t.distance_km} km` : undefined,
-        status: t.trip_status === 'COMPLETED' ? 'Completed' : 'Cancelled',
-        payment_method: t.payment_method,
-      }));
+
+      const transactions = activity
+        .filter((t: any) => t.trip_status === 'COMPLETED' || t.trip_status === 'MID_CANCELLED')
+        .map((t: any) => ({
+          id: t.trip_id || t.id,
+          trip_id: t.trip_id || t.id,
+          trip_code: t.trip_code || t.booking_code,
+          title: t.trip_status === 'COMPLETED' ? 'Ride Earnings' : 'Cancellation Fee',
+          amount: parseFloat(t.total_fare || '0'),
+          date: new Date(t.created_at).toLocaleDateString(),
+          time: new Date(t.created_at).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          pickup: t.pickup_address,
+          drop: t.drop_address,
+          distance: t.distance_km ? `${t.distance_km} km` : undefined,
+          status: t.trip_status === 'COMPLETED' ? 'Completed' : 'Cancelled',
+          payment_method: t.payment_method,
+        }));
 
       return successResponse(res, 200, 'Earnings transactions fetched successfully', transactions);
     } catch (err) {
@@ -328,7 +348,9 @@ export const DriverController = {
     try {
       const driverId = req.params.id as string;
       const driver = await DriverService.getDriverById(driverId);
-      return successResponse(res, 200, 'Wallet transactions fetched successfully', { data: driver.creditUsage || [] });
+      return successResponse(res, 200, 'Wallet transactions fetched successfully', {
+        data: driver.creditUsage || [],
+      });
     } catch (err) {
       next(err);
     }
@@ -356,7 +378,7 @@ export const DriverController = {
     try {
       const { lng, lat, radius } = req.body;
       if (!lng || !lat) {
-        return res.status(400).json({ success: false, message: "Missing coordinates" });
+        return res.status(400).json({ success: false, message: 'Missing coordinates' });
       }
 
       const drivers = await DriverService.getAvailableDrivers(
@@ -375,7 +397,7 @@ export const DriverController = {
     try {
       const { driverId, lat, lng, address } = req.body;
       await DriverService.syncLocation(driverId, lat, lng, address);
-      return res.status(200).json({ success: true, message: "Location updated" });
+      return res.status(200).json({ success: true, message: 'Location updated' });
     } catch (error: any) {
       return res.status(400).json({ success: false, message: error.message });
     }
@@ -389,5 +411,4 @@ export const DriverController = {
       next(err);
     }
   },
-
 };

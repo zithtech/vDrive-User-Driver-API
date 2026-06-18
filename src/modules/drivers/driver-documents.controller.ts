@@ -5,15 +5,14 @@ import { logger } from '../../shared/logger';
 import { successResponse } from '../../shared/errorHandler';
 
 export class DriverDocumentsController {
-  
   static async getUploadUrl(req: Request, res: Response, next: NextFunction) {
     try {
       const { driverId } = req.params;
       const { documentType, contentType } = req.body;
-      
+
       const key = `drivers/${driverId}/${documentType}_${Date.now()}`;
       const result = await s3Service.getUploadUrl(key, contentType);
-      
+
       return successResponse(res, 200, 'Upload URL generated successfully', result);
     } catch (error) {
       next(error);
@@ -31,7 +30,7 @@ export class DriverDocumentsController {
         documentType,
         documentUrl
       );
-      
+
       return successResponse(res, 201, 'Document saved successfully', document);
     } catch (error) {
       next(error);
@@ -42,9 +41,9 @@ export class DriverDocumentsController {
     try {
       const { driverId } = req.params;
       logger.info(`Submitting documents for driver: ${driverId}`);
-      
+
       await DriverDocumentsService.submitDocuments(driverId as string);
-      
+
       return successResponse(res, 200, 'Documents submitted successfully', { success: true });
     } catch (error) {
       next(error);
@@ -63,12 +62,17 @@ export class DriverDocumentsController {
 
   static async verifyDocument(req: Request, res: Response, next: NextFunction) {
     try {
-        const { id } = req.params; // Document ID
-        const { status, remarks, reason } = req.body;
-        const document = await DriverDocumentsService.verifyDocument(id as string, status, remarks || reason, reason || remarks);
-        return successResponse(res, 200, 'Document verified successfully', document);
+      const { id } = req.params; // Document ID
+      const { status, remarks, reason } = req.body;
+      const document = await DriverDocumentsService.verifyDocument(
+        id as string,
+        status,
+        remarks || reason,
+        reason || remarks
+      );
+      return successResponse(res, 200, 'Document verified successfully', document);
     } catch (error) {
-        next(error);
+      next(error);
     }
   }
 }

@@ -25,7 +25,7 @@ interface Config {
     refreshExpiresIn: SignOptions['expiresIn'];
   };
   prodURL: string;
-  adminApiUrl: string,
+  adminApiUrl: string;
   awsServiceUrl: string;
   email: {
     service: string;

@@ -23,10 +23,9 @@ export const initSocket = (server: HttpServer) => {
     }
 
     try {
-      const decoded = jwt.verify(
-        token,
-        process.env.JWT_SECRET as string,
-      ) as JwtPayload & { id: string };
+      const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload & {
+        id: string;
+      };
 
       if (!decoded?.id) {
         return next(new Error('Invalid token payload'));
@@ -55,57 +54,62 @@ export const initSocket = (server: HttpServer) => {
       logger.info(`Socket ${socket.id} joined room: ${room}`);
     });
 
-    socket.on('driver_location_update', async (data: { driverId: string; lat: number; lng: number; address?: string }) => {
-      try {
-        const { DriverRepository } = require('../modules/drivers/driver.repository');
-        const { TripService } = require('../modules/trip/trip.service');
-        const { LocationHistoryRepository } = require('../modules/drivers/locationHistory.repository');
-        const { getRedisClient } = require('./redis');
-
-        const { driverId, lat, lng, address } = data;
-        if (!driverId || lat === undefined || lng === undefined) {
-          return;
-        }
-
-        // 1. ⚡ Update Redis GEO Index immediately (High performance)
+    socket.on(
+      'driver_location_update',
+      async (data: { driverId: string; lat: number; lng: number; address?: string }) => {
         try {
-          const redis = getRedisClient();
-          // Add to 'driver_locations' geo index (longitude first, then latitude in Redis!)
-          await redis.geoadd('driver_locations', lng, lat, driverId);
-          // Store last updated timestamp
-          await redis.hset(`driver_info:${driverId}`, 'last_updated', Date.now());
-          if (address) {
-            await redis.hset(`driver_info:${driverId}`, 'address', address);
+          const { DriverRepository } = require('../modules/drivers/driver.repository');
+          const { TripService } = require('../modules/trip/trip.service');
+          const {
+            LocationHistoryRepository,
+          } = require('../modules/drivers/locationHistory.repository');
+          const { getRedisClient } = require('./redis');
+
+          const { driverId, lat, lng, address } = data;
+          if (!driverId || lat === undefined || lng === undefined) {
+            return;
           }
-        } catch (redisErr) {
-          logger.error(`Redis geoadd failed for driver ${driverId}:`, redisErr);
-        }
 
-        // Check if driver has an active trip
-        const activeTrip = await TripService.getActiveTrip(driverId);
-        if (activeTrip) {
-          // Broadcast to passenger
-          io.to(`trip_${activeTrip.trip_id}`).emit('driver_location_updated', {
-            lat,
-            lng,
-            driverId,
-            tripId: activeTrip.trip_id,
-          });
+          // 1. ⚡ Update Redis GEO Index immediately (High performance)
+          try {
+            const redis = getRedisClient();
+            // Add to 'driver_locations' geo index (longitude first, then latitude in Redis!)
+            await redis.geoadd('driver_locations', lng, lat, driverId);
+            // Store last updated timestamp
+            await redis.hset(`driver_info:${driverId}`, 'last_updated', Date.now());
+            if (address) {
+              await redis.hset(`driver_info:${driverId}`, 'address', address);
+            }
+          } catch (redisErr) {
+            logger.error(`Redis geoadd failed for driver ${driverId}:`, redisErr);
+          }
 
-          // 📝 Log to location history (only during active trips)
-          LocationHistoryRepository.logPoint({
-            trip_id: activeTrip.trip_id,
-            driver_id: driverId,
-            latitude: lat,
-            longitude: lng,
-          }).catch((err: any) => {
-            logger.error('Failed to log location history:', err);
-          });
+          // Check if driver has an active trip
+          const activeTrip = await TripService.getActiveTrip(driverId);
+          if (activeTrip) {
+            // Broadcast to passenger
+            io.to(`trip_${activeTrip.trip_id}`).emit('driver_location_updated', {
+              lat,
+              lng,
+              driverId,
+              tripId: activeTrip.trip_id,
+            });
+
+            // 📝 Log to location history (only during active trips)
+            LocationHistoryRepository.logPoint({
+              trip_id: activeTrip.trip_id,
+              driver_id: driverId,
+              latitude: lat,
+              longitude: lng,
+            }).catch((err: any) => {
+              logger.error('Failed to log location history:', err);
+            });
+          }
+        } catch (error) {
+          logger.error('Error handling driver_location_update:', error);
         }
-      } catch (error) {
-        logger.error('Error handling driver_location_update:', error);
       }
-    });
+    );
 
     socket.on('disconnect', () => {
       logger.info(`Client disconnected: ${socket.id}`);
