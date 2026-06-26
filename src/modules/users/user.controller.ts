@@ -6,7 +6,7 @@ import { OnboardingStatus, UserStatus } from '../../enums/user.enums';
 import { logger } from '../../shared/logger';
 import { cleanUndefined, formFullName, generateOTP } from '../../utilities/helper';
 import { UserRepository } from './user.repository';
-import { notifyAdmin } from '../../sockets/admin-socket.service';
+import { notifyAdmin } from '../../shared/eventBus';
 import { EmailService } from '../email/email.service';
 import { S3Service, s3Service } from '../s3/s3.service';
 

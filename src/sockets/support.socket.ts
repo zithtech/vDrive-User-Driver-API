@@ -1,7 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { query } from '../shared/database';
 import { logger } from '../shared/logger';
-import { notifyAdmin } from './admin-socket.service';
+import { notifyAdmin } from '../shared/eventBus';
 import { SupportService } from '../modules/support/support.service';
 
 export default function registerSupportSocket(io: Server, socket: Socket) {

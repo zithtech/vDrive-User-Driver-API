@@ -9,7 +9,7 @@ import { TripVerificationHistoryRepository } from './trip-verification-history.r
 import { DriverRepository } from './driver.repository';
 import { logger } from '../../shared/logger';
 import { DriverDocumentsRepository } from './driver-documents.repository';
-import { notifyAdmin } from '../../sockets/admin-socket.service';
+import { notifyAdmin } from '../../shared/eventBus';
 import { TripStatus } from '../../enums/trip.enums';
 import { s3Service } from '../s3/s3.service';
 

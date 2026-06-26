@@ -3,7 +3,7 @@ import { Server as HttpServer } from 'http';
 import { logger } from '../shared/logger';
 import { TripService } from '../modules/trip/trip.service';
 import { TripSocketEvent, TripEventPayload } from './socket.types';
-import { connectToAdminBackend } from '../sockets/admin-socket.service';
+import { initAdminEventSubscriber, notifyAdmin } from '../shared/eventBus';
 import registerChatSocket from './chat.socket';
 import registerSupportSocket from './support.socket';
 
@@ -35,7 +35,7 @@ export const initSocket = (server: HttpServer): Server => {
     registerChatSocket(io, socket);
     registerSupportSocket(io, socket);
   });
-  connectToAdminBackend(io);
+  initAdminEventSubscriber(io); // receive events from admin backend via Redis pub/sub
 
   return io;
 };
@@ -133,10 +133,14 @@ const handleDriverLocation = (socket: Socket): void => {
         await redis.geoadd('driver_locations', lng, lat, driverId);
 
         // Store last updated timestamp and optional address
-        await redis.hset(`driver_info:${driverId}`, 'last_updated', Date.now());
+        const timestamp = Date.now();
+        await redis.hset(`driver_info:${driverId}`, 'last_updated', timestamp);
         if (address) {
           await redis.hset(`driver_info:${driverId}`, 'address', address);
         }
+
+        // 📢 Forward real-time location to the admin live-map (Redis pub/sub bus)
+        notifyAdmin('DRIVER_LOCATION_UPDATE', { driverId, lat, lng, address, timestamp });
       } catch (error) {
         logger.error('Error handling driver_location_update socket event:', error);
       }
@@ -145,23 +149,45 @@ const handleDriverLocation = (socket: Socket): void => {
 
   socket.on(
     'updateDriverLocation',
-    (data: {
+    async (data: {
       rideId: string;
       latitude: number;
       longitude: number;
       heading?: number;
       eta?: number;
     }) => {
-      // logger.info(`Driver location: rideId ${data.rideId} ${data.latitude}, ${data.longitude}`);
+      // 1. Emit to Passenger (Unchanged)
       emitToRoom(`trip_${data.rideId}`, 'locationUpdate', {
         latitude: data.latitude,
         longitude: data.longitude,
         heading: data.heading,
         eta: data.eta,
       });
-      logger.info(
-        `📡 Broadcasted locationUpdate for trip_${data.rideId} | Lat: ${data.latitude.toFixed(5)} Lng: ${data.longitude.toFixed(5)}`
-      );
+
+      // 2. Sync to Admin Map via Redis
+      try {
+        const { getRedisClient } = require('../shared/redis');
+        const redis = getRedisClient();
+
+        // Quickly lookup which driver is doing this trip
+        const driverId = await redis.get(`trip_driver:${data.rideId}`);
+        if (driverId) {
+          const timestamp = Date.now();
+          // Update the global map so the car moves on the Admin Dashboard
+          await redis.geoadd('driver_locations', data.longitude, data.latitude, driverId);
+          await redis.hset(`driver_info:${driverId}`, 'last_updated', timestamp);
+
+          // Broadcast to Admin live-map (Redis pub/sub bus)
+          notifyAdmin('DRIVER_LOCATION_UPDATE', {
+            driverId,
+            lat: data.latitude,
+            lng: data.longitude,
+            timestamp,
+          });
+        }
+      } catch (err) {
+        logger.error(`Error updating driver location for trip ${data.rideId}:`, err);
+      }
     }
   );
 };
