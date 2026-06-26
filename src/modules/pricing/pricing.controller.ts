@@ -68,6 +68,8 @@ export const PricingController = {
 
       // Round trip never adds a return charge; everything else is treated as one-way
       const trip_type = value.ride_type === 'ROUND_TRIP' ? 'round_trip' : 'one_way';
+      const is_outstation = value.ride_type === 'OUTSTATION';
+      const days = value.days && value.days > 0 ? value.days : 1;
 
       // Estimate duration from distance if the app didn't send it
       const duration_min =
@@ -81,6 +83,8 @@ export const PricingController = {
         day,
         time,
         trip_type,
+        is_outstation,
+        days,
         ...(value.driver_type && { driver_type: value.driver_type }),
         from_district: value.from_district,
         from_area: value.from_area || null,
@@ -94,6 +98,8 @@ export const PricingController = {
         request: {
           ride_type: value.ride_type,
           trip_type,
+          is_outstation,
+          days,
           scheduled_at: value.scheduled_at || null,
           day,
           time,
