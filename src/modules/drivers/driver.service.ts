@@ -359,6 +359,18 @@ export const DriverService = {
       },
     });
 
+    // --- Redis Integration ---
+    try {
+      const { getRedisClient, getPubClient } = require('../../shared/redis');
+      const redis = getRedisClient();
+      const pubClient = getPubClient();
+
+      await redis.sadd('online_drivers', driverId);
+      await pubClient.publish('driver_status_channel', JSON.stringify({ driverId, status: 'ONLINE', timestamp: Date.now() }));
+    } catch (err) {
+      logger.error(`Redis goOnline error for driver ${driverId}: ${err}`);
+    }
+
     // Check for upcoming scheduled rides
     const upcomingRides = await query(
       `SELECT * FROM trips 
@@ -398,6 +410,19 @@ export const DriverService = {
         lastActive: new Date().toISOString(),
       },
     });
+
+    // --- Redis Integration ---
+    try {
+      const { getRedisClient, getPubClient } = require('../../shared/redis');
+      const redis = getRedisClient();
+      const pubClient = getPubClient();
+
+      await redis.srem('online_drivers', driverId);
+      await redis.zrem('driver_locations', driverId);
+      await pubClient.publish('driver_status_channel', JSON.stringify({ driverId, status: 'OFFLINE', timestamp: Date.now() }));
+    } catch (err) {
+      logger.error(`Redis goOffline error for driver ${driverId}: ${err}`);
+    }
   },
 
   async findNearbyDrivers(io: Server, lng: number, lat: number, newTrip: Trip, radius: number) {

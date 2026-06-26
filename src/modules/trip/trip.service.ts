@@ -27,6 +27,24 @@ import { UserStatus } from '../../enums/user.enums';
 // Keep global map
 const tripBroadcastTimers = new Map<string, NodeJS.Timeout>();
 
+async function publishAdminTripUpdate(tripId: string, status: string, driverId?: string) {
+  try {
+    const { getPubClient, getRedisClient } = require('../../shared/redis');
+    const pubClient = getPubClient();
+    const redis = getRedisClient();
+
+    if (status === 'ACCEPTED' && driverId) {
+      await redis.set(`trip_driver:${tripId}`, driverId);
+    } else if (['COMPLETED', 'CANCELLED', 'MID_CANCELLED'].includes(status)) {
+      await redis.del(`trip_driver:${tripId}`);
+    }
+
+    await pubClient.publish('admin_trip_updates', JSON.stringify({ tripId, status, driverId, timestamp: Date.now() }));
+  } catch (err) {
+    logger.error('Redis admin trip update error:', err);
+  }
+}
+
 export const TripService = {
   async getTrips(bookingType?: string, driverId?: string, onboardingStatus?: string) {
     // If it's a driver and they are requesting scheduled rides
@@ -329,6 +347,7 @@ export const TripService = {
         driver?.full_name ?? 'Captain', // ✅ fallback if name is undefined
         String(trip.trip_id ?? '')
       );
+      if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
       return updatedTrip;
     } catch (error) {
       logger.error('Acceptance Error in Service:', error);
@@ -675,6 +694,7 @@ export const TripService = {
 
     broadcastTripUpdate(tripId, { status: newStatus, type: 'trip_updated', trip: updatedTrip });
 
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
     return updatedTrip;
   },
 
@@ -752,6 +772,7 @@ export const TripService = {
       logger.error(`Failed to emit trip update: ${err.message}`);
     }
 
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
     return updatedTrip;
   },
 
@@ -877,6 +898,7 @@ export const TripService = {
       logger.error(`Failed to emit trip completion: ${err.message}`);
     }
 
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
     return updatedTrip;
   },
 
@@ -947,6 +969,7 @@ export const TripService = {
       logger.error(`Failed to emit trip arrival: ${err.message}`);
     }
 
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
     return updatedTrip;
   },
 
@@ -983,6 +1006,7 @@ export const TripService = {
       logger.error(`Failed to emit trip arrival: ${err.message}`);
     }
 
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
     return updatedTrip;
   },
 

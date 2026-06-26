@@ -161,5 +161,74 @@ export const initCronJobs = () => {
     }
   });
 
+  // Stale Driver Cleanup: Every minute
+  cron.schedule('* * * * *', async () => {
+    const lockKey = 'stale_driver_cleanup_job';
+    const hasLock = await acquireLock(lockKey, 50); // 50s TTL for a 1-min interval
+    if (!hasLock) return;
+
+    logger.debug('Running Stale Driver Cleanup...');
+    try {
+      const { getRedisClient, getPubClient } = require('./redis');
+      const redis = getRedisClient();
+      const pubClient = getPubClient();
+      const { getClient } = require('./database');
+
+      const onlineDrivers = await redis.smembers('online_drivers');
+      if (!onlineDrivers || onlineDrivers.length === 0) {
+        await releaseLock(lockKey);
+        return;
+      }
+
+      const now = Date.now();
+      const STALE_THRESHOLD = 180000; // 3 minutes in ms
+      const staleDriverIds: string[] = [];
+
+      for (const driverId of onlineDrivers) {
+        const lastUpdatedStr = await redis.hget(`driver_info:${driverId}`, 'last_updated');
+        if (lastUpdatedStr) {
+          const lastUpdated = parseInt(lastUpdatedStr, 10);
+          if (now - lastUpdated > STALE_THRESHOLD) {
+            staleDriverIds.push(driverId);
+          }
+        } else {
+          // If no last_updated exists, treat as stale
+          staleDriverIds.push(driverId);
+        }
+      }
+
+      if (staleDriverIds.length > 0) {
+        // 1. Remove from Redis
+        await redis.srem('online_drivers', ...staleDriverIds);
+        await redis.zrem('driver_locations', ...staleDriverIds);
+
+        // 2. Publish Offline Status
+        for (const driverId of staleDriverIds) {
+          await pubClient.publish('driver_status_channel', JSON.stringify({
+            driverId,
+            status: 'UNAVAILABLE'
+          }));
+        }
+
+        // 3. Update PostgreSQL
+        const client = await getClient();
+        try {
+          await client.query(
+            'UPDATE drivers SET is_online = FALSE WHERE id = ANY($1::uuid[])',
+            [staleDriverIds]
+          );
+        } finally {
+          client.release();
+        }
+
+        logger.info(`Cleaned up ${staleDriverIds.length} stale drivers due to inactivity.`);
+      }
+    } catch (error) {
+      logger.error('Error in Stale Driver Cleanup job:', error);
+    } finally {
+      await releaseLock(lockKey);
+    }
+  });
+
   logger.info('✅ Cron jobs initialized');
 };
