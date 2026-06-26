@@ -8,7 +8,7 @@ import { User } from '../users/user.model';
 import { UserStatus, UserRole, OnboardingStatus } from '../../enums/user.enums';
 import { UserService } from '../users/user.service';
 import { formFullName, generateOTP } from '../../utilities/helper';
-import { notifyAdmin } from '../../sockets/admin-socket.service';
+import { notifyAdmin } from '../../shared/eventBus';
 import { AuthRepository } from './auth.repository';
 import { DriverRepository } from '../drivers/driver.repository';
 import { query } from '../../shared/database';

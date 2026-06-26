@@ -51,10 +51,6 @@ const isServiceAuthenticated = (req: Request, res: Response, next: NextFunction)
 // Middleware that allows either service authentication or user authentication
 const isAuthenticatedOrService = (req: Request, res: Response, next: NextFunction) => {
   const apiKey = req.headers['x-api-key'] as string;
-  const { logger } = require('./logger');
-  logger.info(`--- DEBUG AUTH ---`);
-  logger.info(`Headers: ${JSON.stringify(req.headers)}`);
-  logger.info(`API Key from header: ${apiKey}`);
 
   if (apiKey) {
     // If API key is provided, use service authentication

@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { SubscriptionRepository } from '../modules/subscriptions/subscription.repository';
 import { TripSchedulerService } from '../modules/trip/trip-scheduler.service';
 import { acquireLock, releaseLock } from './redis';
+import { notifyAdmin } from './eventBus';
 import { logger } from './logger';
 import { CouponService } from '../modules/coupon-management/coupon.service';
 import { PromoService } from '../modules/promos/promo.service';
@@ -169,9 +170,8 @@ export const initCronJobs = () => {
 
     logger.debug('Running Stale Driver Cleanup...');
     try {
-      const { getRedisClient, getPubClient } = require('./redis');
+      const { getRedisClient } = require('./redis');
       const redis = getRedisClient();
-      const pubClient = getPubClient();
       const { getClient } = require('./database');
 
       const onlineDrivers = await redis.smembers('online_drivers');
@@ -198,16 +198,14 @@ export const initCronJobs = () => {
       }
 
       if (staleDriverIds.length > 0) {
-        // 1. Remove from Redis
+        // 1. Remove from Redis (incl. driver_info hash to avoid unbounded key growth)
         await redis.srem('online_drivers', ...staleDriverIds);
         await redis.zrem('driver_locations', ...staleDriverIds);
+        await redis.del(...staleDriverIds.map((id: string) => `driver_info:${id}`));
 
-        // 2. Publish Offline Status
+        // 2. Publish Offline Status to the admin live-map (Redis pub/sub bus)
         for (const driverId of staleDriverIds) {
-          await pubClient.publish('driver_status_channel', JSON.stringify({
-            driverId,
-            status: 'UNAVAILABLE'
-          }));
+          notifyAdmin('DRIVER_STATUS_UPDATE', { driverId, status: 'UNAVAILABLE' });
         }
 
         // 3. Update PostgreSQL

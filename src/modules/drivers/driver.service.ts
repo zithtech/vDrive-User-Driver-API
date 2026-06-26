@@ -12,6 +12,8 @@ import axios from 'axios';
 import config from '../../config';
 import { notificationService } from '../../services/notificationService';
 import { DriverOnboardingStatus } from '../../enums/user.enums';
+import { notifyAdmin } from '../../shared/eventBus';
+import { getRedisClient } from '../../shared/redis';
 
 export const DriverService = {
   async createDriver(driverData: CreateDriverInput): Promise<Driver> {
@@ -361,12 +363,10 @@ export const DriverService = {
 
     // --- Redis Integration ---
     try {
-      const { getRedisClient, getPubClient } = require('../../shared/redis');
       const redis = getRedisClient();
-      const pubClient = getPubClient();
 
       await redis.sadd('online_drivers', driverId);
-      await pubClient.publish('driver_status_channel', JSON.stringify({ driverId, status: 'ONLINE', timestamp: Date.now() }));
+      notifyAdmin('DRIVER_STATUS_UPDATE', { driverId, status: 'ONLINE', timestamp: Date.now() });
     } catch (err) {
       logger.error(`Redis goOnline error for driver ${driverId}: ${err}`);
     }
@@ -413,13 +413,12 @@ export const DriverService = {
 
     // --- Redis Integration ---
     try {
-      const { getRedisClient, getPubClient } = require('../../shared/redis');
       const redis = getRedisClient();
-      const pubClient = getPubClient();
 
       await redis.srem('online_drivers', driverId);
       await redis.zrem('driver_locations', driverId);
-      await pubClient.publish('driver_status_channel', JSON.stringify({ driverId, status: 'OFFLINE', timestamp: Date.now() }));
+      await redis.del(`driver_info:${driverId}`); // avoid unbounded key growth
+      notifyAdmin('DRIVER_STATUS_UPDATE', { driverId, status: 'OFFLINE', timestamp: Date.now() });
     } catch (err) {
       logger.error(`Redis goOffline error for driver ${driverId}: ${err}`);
     }

@@ -1,10 +1,9 @@
 import { Server, Socket } from 'socket.io';
-import { createAdapter } from '@socket.io/redis-adapter';
 import { Server as HttpServer } from 'http';
 import { logger } from '../shared/logger';
 import { TripService } from '../modules/trip/trip.service';
 import { TripSocketEvent, TripEventPayload } from './socket.types';
-import { connectToAdminBackend } from '../sockets/admin-socket.service';
+import { initAdminEventSubscriber, notifyAdmin } from '../shared/eventBus';
 import registerChatSocket from './chat.socket';
 import registerSupportSocket from './support.socket';
 
@@ -24,16 +23,6 @@ export const initSocket = (server: HttpServer): Server => {
     transports: ['websocket', 'polling'],
   });
 
-  try {
-    const { getPubClient, getSubClient } = require('../shared/redis');
-    const pubClient = getPubClient();
-    const subClient = getSubClient();
-    io.adapter(createAdapter(pubClient, subClient));
-    logger.info('✅ Socket.io Redis Adapter configured successfully');
-  } catch (error: any) {
-    logger.error(`❌ Failed to configure Socket.io Redis Adapter: ${error.message}`);
-  }
-
   io.on('connection', (socket: Socket) => {
     logger.info(`Socket connected: ${socket.id}`);
 
@@ -46,7 +35,7 @@ export const initSocket = (server: HttpServer): Server => {
     registerChatSocket(io, socket);
     registerSupportSocket(io, socket);
   });
-  connectToAdminBackend(io);
+  initAdminEventSubscriber(io); // receive events from admin backend via Redis pub/sub
 
   return io;
 };
@@ -133,9 +122,8 @@ const handleDriverLocation = (socket: Socket): void => {
     'driver_location_update',
     async (data: { driverId: string; lat: number; lng: number; address?: string }) => {
       try {
-        const { getRedisClient, getPubClient } = require('../shared/redis');
+        const { getRedisClient } = require('../shared/redis');
         const redis = getRedisClient();
-        const pubClient = getPubClient();
         const { driverId, lat, lng, address } = data;
 
         if (!driverId || lat === undefined || lng === undefined) return;
@@ -151,17 +139,8 @@ const handleDriverLocation = (socket: Socket): void => {
           await redis.hset(`driver_info:${driverId}`, 'address', address);
         }
 
-        // 📢 Publish real-time location update to Redis channel
-        await pubClient.publish(
-          'driver_locations_channel',
-          JSON.stringify({
-            driverId,
-            lat,
-            lng,
-            address,
-            timestamp,
-          })
-        );
+        // 📢 Forward real-time location to the admin live-map (Redis pub/sub bus)
+        notifyAdmin('DRIVER_LOCATION_UPDATE', { driverId, lat, lng, address, timestamp });
       } catch (error) {
         logger.error('Error handling driver_location_update socket event:', error);
       }
@@ -187,9 +166,8 @@ const handleDriverLocation = (socket: Socket): void => {
 
       // 2. Sync to Admin Map via Redis
       try {
-        const { getRedisClient, getPubClient } = require('../shared/redis');
+        const { getRedisClient } = require('../shared/redis');
         const redis = getRedisClient();
-        const pubClient = getPubClient();
 
         // Quickly lookup which driver is doing this trip
         const driverId = await redis.get(`trip_driver:${data.rideId}`);
@@ -199,16 +177,13 @@ const handleDriverLocation = (socket: Socket): void => {
           await redis.geoadd('driver_locations', data.longitude, data.latitude, driverId);
           await redis.hset(`driver_info:${driverId}`, 'last_updated', timestamp);
 
-          // Broadcast to Admin Feed
-          await pubClient.publish(
-            'driver_locations_channel',
-            JSON.stringify({
-              driverId,
-              lat: data.latitude,
-              lng: data.longitude,
-              timestamp,
-            })
-          );
+          // Broadcast to Admin live-map (Redis pub/sub bus)
+          notifyAdmin('DRIVER_LOCATION_UPDATE', {
+            driverId,
+            lat: data.latitude,
+            lng: data.longitude,
+            timestamp,
+          });
         }
       } catch (err) {
         logger.error(`Error updating driver location for trip ${data.rideId}:`, err);

@@ -10,7 +10,12 @@ export const connectRedis = async (): Promise<void> => {
 
   const redisOptions = {
     lazyConnect: true,
-    maxRetriesPerRequest: null,
+    // Finite (not null): when Redis is unreachable a command REJECTS after a few
+    // retries instead of queueing forever, so callers' try/catch actually fire
+    // (e.g. findNearbyDrivers falls back to PostGIS, lock acquisition fails safe).
+    maxRetriesPerRequest: 3,
+    // Hard ceiling so a single command can never hang a request indefinitely.
+    commandTimeout: 5000,
     retryStrategy: (times: number) => {
       const delay = Math.min(times * 100, 3000); // exponential backoff: 100ms → 3s cap
       logger.warn(`Redis retry attempt ${times}, reconnecting in ${delay}ms`);
