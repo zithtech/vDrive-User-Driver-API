@@ -36,6 +36,7 @@ export const TripValidation = {
     coupon_code: tripSchema.couponCodeRule.optional(),
     discount: tripSchema.discountRule.optional(),
     applied_coupon_id: tripSchema.appliedCouponIdRule.optional(),
+    trip_duration_minutes: tripSchema.tripDurationMinutesRule.optional(),
   }),
 
   updateTripValidation: Joi.object()
