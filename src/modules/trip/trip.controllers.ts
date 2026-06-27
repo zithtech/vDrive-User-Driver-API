@@ -4,7 +4,7 @@ import { successResponse } from '../../shared/errorHandler';
 import { Trip } from './trip.model';
 import { logger } from '../../shared/logger';
 import { cleanUndefined } from '../../utilities/helper';
-import { notifyAdmin } from '../../sockets/admin-socket.service';
+import { notifyAdmin } from '../../shared/eventBus';
 import { DriverNotifications, UserNotifications } from '../notifications';
 import { UserRepository } from '../users/user.repository';
 import { DriverRepository } from '../drivers/driver.repository';

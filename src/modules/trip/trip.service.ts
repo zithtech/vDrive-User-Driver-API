@@ -19,6 +19,8 @@ import { DriverRepository } from '../drivers/driver.repository';
 import { DriverAvailabilityStatus } from '../drivers/driver.model';
 import { TripSocketEvent } from '../../sockets/socket.types';
 import { logger } from '../../shared/logger';
+import { notifyAdmin } from '../../shared/eventBus';
+import { getRedisClient } from '../../shared/redis';
 import { ReferralService } from '../referrals/referral.service';
 import { ReferralRepository } from '../referrals/referral.repository';
 import { DriverReferralService } from '../driver-referrals/driver-referral.service';
@@ -26,6 +28,23 @@ import { CouponService } from '../coupon-management/coupon.service';
 import { UserStatus } from '../../enums/user.enums';
 // Keep global map
 const tripBroadcastTimers = new Map<string, NodeJS.Timeout>();
+
+async function publishAdminTripUpdate(tripId: string, status: string, driverId?: string) {
+  try {
+    const redis = getRedisClient();
+
+    if (status === 'ACCEPTED' && driverId) {
+      await redis.set(`trip_driver:${tripId}`, driverId);
+    } else if (['COMPLETED', 'CANCELLED', 'MID_CANCELLED'].includes(status)) {
+      await redis.del(`trip_driver:${tripId}`);
+    }
+
+    // Forward to the admin UI via Redis pub/sub bus
+    notifyAdmin('TRIP_STATUS_UPDATE', { tripId, status, driverId, timestamp: Date.now() });
+  } catch (err) {
+    logger.error('Redis admin trip update error:', err);
+  }
+}
 
 export const TripService = {
   async getTrips(bookingType?: string, driverId?: string, onboardingStatus?: string) {
@@ -248,8 +267,12 @@ export const TripService = {
         throw { statusCode: 400, message: 'You already have an upcoming scheduled ride' };
       }
 
-      // Update Trip
-      await TripRepository.acceptTrip(tripId, driverId);
+      // Update Trip — the repository UPDATE is guarded by trip_status, so a null
+      // return means another driver won the race. Bail out before touching driver state.
+      const acceptedTrip = await TripRepository.acceptTrip(tripId, driverId);
+      if (!acceptedTrip) {
+        throw { statusCode: 409, message: 'Trip is no longer available' };
+      }
 
       // Update Driver
       await DriverRepository.update(driverId, {
@@ -269,8 +292,12 @@ export const TripService = {
         throw { statusCode: 400, message: 'You have a scheduled ride starting soon' };
       }
 
-      // Update Trip
-      await TripRepository.acceptTrip(tripId, driverId);
+      // Update Trip — the repository UPDATE is guarded by trip_status, so a null
+      // return means another driver won the race. Bail out before touching driver state.
+      const acceptedTrip = await TripRepository.acceptTrip(tripId, driverId);
+      if (!acceptedTrip) {
+        throw { statusCode: 409, message: 'Trip is no longer available' };
+      }
 
       // Update Driver
       await DriverRepository.update(driverId, {
@@ -329,6 +356,7 @@ export const TripService = {
         driver?.full_name ?? 'Captain', // ✅ fallback if name is undefined
         String(trip.trip_id ?? '')
       );
+      if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
       return updatedTrip;
     } catch (error) {
       logger.error('Acceptance Error in Service:', error);
@@ -675,6 +703,7 @@ export const TripService = {
 
     broadcastTripUpdate(tripId, { status: newStatus, type: 'trip_updated', trip: updatedTrip });
 
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
     return updatedTrip;
   },
 
@@ -752,6 +781,7 @@ export const TripService = {
       logger.error(`Failed to emit trip update: ${err.message}`);
     }
 
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
     return updatedTrip;
   },
 
@@ -877,6 +907,7 @@ export const TripService = {
       logger.error(`Failed to emit trip completion: ${err.message}`);
     }
 
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
     return updatedTrip;
   },
 
@@ -947,6 +978,7 @@ export const TripService = {
       logger.error(`Failed to emit trip arrival: ${err.message}`);
     }
 
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
     return updatedTrip;
   },
 
@@ -983,6 +1015,7 @@ export const TripService = {
       logger.error(`Failed to emit trip arrival: ${err.message}`);
     }
 
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
     return updatedTrip;
   },
 
@@ -996,12 +1029,13 @@ export const TripService = {
 
   async assignToDriver(tripId: string, driverId: string) {
     const { acquireLock, releaseLock } = require('../../shared/redis');
-    const lockKey = `lock:assign:${tripId}`;
+    // acquireLock() already prefixes keys with "lock:" — don't double it here.
+    const lockKey = `assign:${tripId}`;
     let lockAcquired = false;
 
     try {
       // 🛡️ 1. Acquire Global Lock to prevent duplicate assignments
-      lockAcquired = await acquireLock(lockKey, 10000);
+      lockAcquired = await acquireLock(lockKey, 10); // seconds — assignment is quick
       if (!lockAcquired) {
         throw { statusCode: 429, message: 'Assignment in progress for this trip' };
       }
