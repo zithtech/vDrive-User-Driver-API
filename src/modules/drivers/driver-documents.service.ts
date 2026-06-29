@@ -3,7 +3,7 @@ import { DriverDocument, DocumentType, DocumentStatus } from './driver-documents
 import { logger } from '../../shared/logger';
 import { query } from '../../shared/database';
 import { DriverRepository } from './driver.repository';
-import { notificationService } from '../../services/notificationService';
+import { DriverNotifications } from '../notifications/driver.notification';
 import { DriverOnboardingStatus } from '../../enums/user.enums';
 
 export class DriverDocumentsService {
@@ -162,28 +162,14 @@ export class DriverDocumentsService {
         const driver = await DriverRepository.findById(driverId);
         if (driver && driver.fcm_token) {
           if (onboardingStatusUpdate === DriverOnboardingStatus.DOCUMENTS_APPROVED) {
-            await notificationService.sendPushNotification(driver.fcm_token, {
-              title: 'Account Approved!',
-              body: 'Your documents have been verified. You can now go online and start earning.',
-              data: {
-                type: 'ACCOUNT_APPROVED',
-                onboarding_status: DriverOnboardingStatus.DOCUMENTS_APPROVED,
-              },
-            });
+            await DriverNotifications.kycApproved(driver.fcm_token);
           } else if (onboardingStatusUpdate === DriverOnboardingStatus.DOCS_REJECTED) {
             const rejectedDocs = mandatoryDocs.filter((d) => d.status === DocumentStatus.REJECTED);
             const docNames = rejectedDocs
               .map((d) => d.document_type.replace(/_/g, ' ').toUpperCase())
               .join(', ');
 
-            await notificationService.sendPushNotification(driver.fcm_token, {
-              title: 'Documents Need Correction',
-              body: `Your ${docNames} was rejected. Please re-upload it with clear images.`,
-              data: {
-                type: 'DOCS_REJECTED',
-                onboarding_status: DriverOnboardingStatus.DOCS_REJECTED,
-              },
-            });
+            await DriverNotifications.kycRejected(driver.fcm_token, `Your ${docNames} was rejected. Please re-upload it with clear images.`);
           }
         }
       } catch (err: any) {
@@ -207,6 +193,24 @@ export class DriverDocumentsService {
     );
 
     if (document) {
+      // Notify driver for individual document verification
+      try {
+        const driver = await DriverRepository.findById(document.driver_id);
+        if (driver && driver.fcm_token) {
+          if (status === DocumentStatus.VERIFIED) {
+            await DriverNotifications.documentApproved(driver.fcm_token, document.document_type);
+          } else if (status === DocumentStatus.REJECTED) {
+            await DriverNotifications.documentRejected(
+              driver.fcm_token,
+              document.document_type,
+              rejection_reason || 'Image not clear'
+            );
+          }
+        }
+      } catch (err: any) {
+        logger.error(`Failed to send document status notification: ${err.message}`);
+      }
+
       // Sync overall KYC status for the driver
       await this.syncKYCStatus(document.driver_id);
     }

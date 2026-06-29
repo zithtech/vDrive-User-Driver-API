@@ -3,7 +3,7 @@ import { logger } from '../../shared/logger';
 import { notificationService } from '../../services/notificationService';
 import { DriverRepository } from '../drivers/driver.repository';
 import { UserRepository } from '../users/user.repository';
-import { notifyAdmin } from '../../sockets/admin-socket.service';
+import { notifyAdmin } from '../../shared/eventBus';
 
 export const SupportService = {
   /* ======================== FAQs ======================== */

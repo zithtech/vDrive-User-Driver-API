@@ -37,7 +37,7 @@ router.get('/media/proxy', async (req, res) => {
     const { url } = req.query;
     if (!url || typeof url !== 'string') return res.status(400).send('URL is required');
 
-    if (url.includes('s3.eu-north-1.amazonaws.com')) {
+    if (url.includes('amazonaws.com')) {
       let key = url.split('.amazonaws.com/')[1];
       if (!key) return res.status(400).send('Invalid S3 URL');
 

@@ -2,7 +2,7 @@ import { connectDatabase } from '../shared/database';
 import { SosService } from '../modules/sos/sos.service';
 import 'dotenv/config';
 import http from 'http';
-import { initSocket } from '../shared/socket';
+import { initSocket } from '../sockets/socket';
 import { logger } from '../shared/logger';
 
 // Use a valid driver from the database
