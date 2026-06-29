@@ -372,7 +372,8 @@ export const TripRepository = {
     const sql = `
       SELECT 
         t.*, 
-        t.trip_id AS trip_code,
+        t.trip_id,
+        t.trip_code AS trip_code,
         t.distance_km AS "Estimate_km",
         u.full_name AS user_name, 
         u.phone_number AS user_phone,

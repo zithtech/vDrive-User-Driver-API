@@ -164,6 +164,27 @@ const handleDriverLocation = (socket: Socket): void => {
       );
     }
   );
+
+  socket.on(
+    'user_location_update',
+    (data: {
+      tripId: string;
+      userId: string;
+      latitude: number;
+      longitude: number;
+      heading?: number;
+    }) => {
+      if (!data.tripId || !data.userId || data.latitude === undefined || data.longitude === undefined) return;
+      
+      emitToRoom(`trip_${data.tripId}`, 'userLocationUpdate', {
+        userId: data.userId,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        heading: data.heading,
+      });
+      // logger.info(`📡 Broadcasted userLocationUpdate for trip_${data.tripId} | Lat: ${data.latitude.toFixed(5)} Lng: ${data.longitude.toFixed(5)}`);
+    }
+  );
 };
 
 const handleTripActions = (socket: Socket): void => {
