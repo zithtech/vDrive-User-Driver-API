@@ -12,6 +12,7 @@ export const PricingValidation = {
     ride_type: Joi.string()
       .valid('ONE_WAY', 'ROUND_TRIP', 'OUTSTATION', 'SCHEDULED')
       .default('ONE_WAY'),
+    days: Joi.number().integer().min(1).default(1), // outstation: number of days
     driver_type: Joi.string().valid('normal', 'elite', 'premium').optional(),
     // When the trip happens — omit for "now"; ISO datetime for a scheduled trip
     scheduled_at: Joi.date().iso().optional(),
