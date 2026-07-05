@@ -96,7 +96,7 @@ export class SosController {
       const { id } = req.params;
       const user_id = (req as any).user.id;
 
-      await SosRepository.removeTrustedContact(Number(id), user_id);
+      await SosRepository.removeTrustedContact(id, user_id);
       return successResponse(res, 200, 'Trusted contact removed');
     } catch (err) {
       next(err);
