@@ -84,7 +84,7 @@ export class SosRepository {
     return result.rows[0];
   }
 
-  static async removeTrustedContact(id: number, user_id: string): Promise<void> {
+  static async removeTrustedContact(id: string, user_id: string): Promise<void> {
     await query('DELETE FROM trusted_contacts WHERE id = $1 AND user_id = $2', [id, user_id]);
   }
 }

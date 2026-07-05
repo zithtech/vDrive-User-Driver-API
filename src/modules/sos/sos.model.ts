@@ -1,5 +1,5 @@
 export interface TrustedContact {
-  id?: number;
+  id?: string;
   user_id: string;
   user_type: 'driver' | 'customer';
   name: string;
