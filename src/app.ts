@@ -11,6 +11,11 @@ import path from 'path';
 
 const app = express();
 
+// Trust the first proxy hop (nginx / LB) so req.ip reflects the real client
+// IP from X-Forwarded-For. Required for correct per-client rate limiting and
+// to silence express-rate-limit's ERR_ERL_UNEXPECTED_X_FORWARDED_FOR warning.
+app.set('trust proxy', 1);
+
 // Serve uploads directory statically
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
