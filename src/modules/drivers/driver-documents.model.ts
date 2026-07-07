@@ -15,6 +15,13 @@ export interface DriverDocument {
   uploaded_at: Date;
   verified_at?: Date;
   remarks?: string;
+  rejection_reason?: string;
+  // OCR fields
+  ocr_extracted_number?: string;
+  ocr_extracted_name?: string;
+  ocr_extracted_expiry?: string;
+  ocr_status?: 'COMPLETED' | 'FAILED' | 'SKIPPED';
+  ocr_raw_text?: string;
 }
 
 export enum DocumentType {
