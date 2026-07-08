@@ -66,6 +66,7 @@ export interface Trip {
   discount?: number;
   created_at?: Date;
   updated_at?: Date;
+  rejected_drivers?: string[];
   [key: string]: unknown;
 }
 
@@ -82,7 +83,7 @@ export interface TripDetailsType {
   car_number: string | null;
   car_type: string | null;
 
-  ride_type: 'ONE_WAY' | 'ROUND_TRIP' | 'DAILY' | 'OUTSTATION';
+  ride_type: 'ONE_WAY' | 'ROUND_TRIP' | 'OUTSTATION';
   service_type: 'DRIVER_ONLY' | 'CAB+DRIVER';
 
   trip_status: 'LIVE' | 'COMPLETED' | 'CANCELLED' | 'UPCOMING' | 'REQUESTED' | 'MID-CANCELLED';

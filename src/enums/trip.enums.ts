@@ -3,7 +3,6 @@ export enum RideType {
   ROUND_TRIP = 'ROUND_TRIP',
   OUTSTATION = 'OUTSTATION',
   SCHEDULED = 'SCHEDULED',
-  // DAILY = 'DAILY',
 }
 
 export enum ServiceType {

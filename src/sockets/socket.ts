@@ -320,6 +320,17 @@ export const emitTripRemoved = (tripId: string): void => {
     tripId,
     timestamp: new Date().toISOString(),
   });
+  
+  // Also emit globally so all drivers who received the request can remove it from their queues
+  try {
+    const io = getIO();
+    io.emit('TRIP_REMOVED', {
+      tripId,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error('Failed to emit global TRIP_REMOVED', error);
+  }
 };
 
 // ─── Emit to specific actor only ────────────────────────────────

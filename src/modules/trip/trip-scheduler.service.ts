@@ -234,4 +234,50 @@ export const TripSchedulerService = {
       logger.error(`Error in broadcastNewScheduledRide: ${error.message}`);
     }
   },
+
+  /**
+   * Auto-cancels scheduled rides that are in REQUESTED state and 
+   * their scheduled_start_time + 10 minutes grace period has passed.
+   */
+  async autoCancelOverdueScheduledRides() {
+    try {
+      // Find trips that started more than 10 minutes ago and are still REQUESTED
+      const result = await query(
+        `UPDATE trips 
+         SET trip_status = 'CANCELLED', updated_at = NOW()
+         WHERE booking_type = 'SCHEDULED' 
+         AND trip_status = 'REQUESTED' 
+         AND scheduled_start_time < NOW() - INTERVAL '10 minutes'
+         RETURNING trip_id, user_id`
+      );
+
+      for (const trip of result.rows) {
+        logger.info(`Auto-cancelled scheduled trip ${trip.trip_id} as start time + grace period passed without driver assignment.`);
+        
+        // Notify User
+        const userQuery = await query('SELECT fcm_token FROM users WHERE id = $1', [trip.user_id]);
+        if (userQuery.rows.length > 0 && userQuery.rows[0].fcm_token) {
+           await NotificationService.sendNotification(
+             userQuery.rows[0].fcm_token,
+             'Ride Cancelled',
+             'Your scheduled ride was automatically cancelled as no driver was available.',
+             { type: 'TRIP_CANCELLED', trip_id: String(trip.trip_id) }
+           );
+        }
+        
+        // Emit Socket event
+        const { emitToRoom } = require('../../sockets/socket');
+        emitToRoom(`user_${trip.user_id}`, 'TRIP_CANCELLED', { trip_id: trip.trip_id, reason: 'NO_DRIVER_AVAILABLE' });
+
+        // Insert into TripChanges for history
+        await query(
+            `INSERT INTO trip_changes (trip_id, change_type, change_by, old_value, new_value, notes, created_at)
+             VALUES ($1, 'CANCELLED', 'SYSTEM', 'REQUESTED', 'CANCELLED', 'Auto cancelled: start time + 10 mins passed without driver', NOW())`,
+            [trip.trip_id]
+        );
+      }
+    } catch (error: any) {
+      logger.error(`Error in autoCancelOverdueScheduledRides: ${error.message}`);
+    }
+  },
 };
