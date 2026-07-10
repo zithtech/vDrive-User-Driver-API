@@ -49,7 +49,7 @@ export const TripRepository = {
       requestedCond += ` AND NOT EXISTS (
         SELECT 1 FROM trip_skips ts 
         WHERE ts.trip_id = t.trip_id AND ts.driver_id = $${params.length + 1}
-      )`;
+      ) AND NOT (COALESCE(t.rejected_drivers, '[]'::jsonb) @> to_jsonb($${params.length + 1}::text))`;
       params.push(driverId);
     }
     statusConditions.push(`(${requestedCond})`);
