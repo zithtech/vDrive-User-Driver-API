@@ -595,16 +595,140 @@ export const TripService = {
       CANCELLATION_REASON_MAP[cancelReason] ??
       (Object.values(CancelReason).includes(cancelReason) ? cancelReason : CancelReason.OTHER);
 
-    // ─── 5. DETERMINE NEW STATUS ─────────────────────────────────────
+    // ─── 5. AUTO-REASSIGN CHECK ─────────────────────────────────────
+    // If the DRIVER cancels a pre-trip ride (ACCEPTED/ARRIVING/ASSIGNED),
+    // attempt to re-dispatch to other drivers instead of permanently cancelling.
+    const MAX_REDISPATCH = 3;
+    const isPreTrip = [TripStatus.ACCEPTED, 'ARRIVING', 'ARRIVED', 'ASSIGNED'].includes(trip.trip_status);
+
+    if (cancelBy === CancelBy.DRIVER && isPreTrip) {
+      const { count: currentRedispatchCount } = await TripRepository.getRedispatchCount(tripId);
+
+      if (currentRedispatchCount < MAX_REDISPATCH) {
+        logger.info(`🔄 Auto-reassigning trip ${tripId}. Re-dispatch #${currentRedispatchCount + 1}/${MAX_REDISPATCH}`);
+
+        // 5a. Reset driver availability
+        if (trip.driver_id) {
+          try {
+            const driver = await DriverRepository.findById(trip.driver_id);
+            if (driver) {
+              await DriverRepository.update(trip.driver_id, {
+                availability: {
+                  ...driver.availability,
+                  status: DriverAvailabilityStatus.ONLINE,
+                },
+              });
+            }
+          } catch (err: any) {
+            logger.error(`Failed to reset driver availability during re-dispatch: ${err.message}`);
+          }
+        }
+
+        // 5b. Reset trip to REQUESTED and record rejected driver
+        const resetTrip = await TripRepository.resetForRedispatch(tripId, trip.driver_id!);
+        if (!resetTrip) throw { statusCode: 500, message: 'Failed to reset trip for re-dispatch' };
+
+        // 5c. Log the cancellation event
+        await TripTransactionService.logEvent({
+          trip_id: trip.trip_id!,
+          event_type: TripEventType.TripCancelled,
+          actor_type: ActorType.Driver,
+          actor_id: trip.driver_id,
+          currentSnapshot: resetTrip,
+          previousSnapshot: previousSnapshot ?? null,
+          notes: `Driver cancelled. Auto-reassigning (attempt ${currentRedispatchCount + 1}/${MAX_REDISPATCH})`,
+          metadata: { cancel_reason: cancelReason, re_dispatch_count: currentRedispatchCount + 1 },
+        });
+
+        // 5d. Emit TRIP_REMOVED to the cancelling driver
+        try {
+          emitToRoom(`driver_${trip.driver_id}`, 'TRIP_REMOVED', { tripId });
+        } catch (e) {
+          logger.error('Failed to emit TRIP_REMOVED to cancelling driver:', e);
+        }
+
+        // 5e. Notify the USER that we're finding another driver (not a full cancellation)
+        try {
+          emitToRoom(`user_${trip.user_id}`, 'RIDE_REASSIGNING', {
+            tripId,
+            message: 'Your previous driver cancelled. Finding you another driver...',
+            reDispatchCount: currentRedispatchCount + 1,
+            maxReDispatch: MAX_REDISPATCH,
+            timestamp: new Date().toISOString(),
+          });
+
+          const userfcmtoken = trip.user_id ? await UserRepository.getFcmTokenById(trip.user_id) : null;
+          if (userfcmtoken) {
+            await UserNotifications.rideCancelled(
+              userfcmtoken,
+              tripId,
+              CancelReason.OTHER,
+              cancelBy
+            );
+          }
+        } catch (err: any) {
+          logger.error(`Failed to notify user about re-dispatch: ${err.message}`);
+        }
+
+        // 5f. Confirm cancellation to the driver
+        try {
+          const driverfcmtoken = trip.driver_id
+            ? await DriverRepository.getFcmTokenById(trip.driver_id)
+            : null;
+          if (driverfcmtoken) {
+            await DriverNotifications.bookingCancelled(driverfcmtoken, tripId, mappedReason, cancelBy);
+          }
+        } catch (err: any) {
+          logger.error(`Failed to send cancellation confirmation to driver: ${err.message}`);
+        }
+
+        // 5g. Re-broadcast to nearby drivers (excluding rejected ones)
+        try {
+          const { getIO } = require('../../sockets/socket');
+          const io = getIO();
+          const { DriverService } = require('../drivers/driver.service');
+
+          const rejectedDriverIds: string[] = resetTrip.rejected_drivers || [];
+          const drivers = await DriverService.getAvailableDrivers(
+            Number(resetTrip.pickup_lng),
+            Number(resetTrip.pickup_lat),
+            500 // radius in meters
+          );
+
+          // Filter out rejected drivers
+          const eligibleDrivers = drivers.filter(
+            (d: any) => !rejectedDriverIds.includes(d.id)
+          );
+
+          if (eligibleDrivers.length > 0) {
+            logger.info(`📡 Re-broadcasting trip ${tripId} to ${eligibleDrivers.length} drivers (excluded ${rejectedDriverIds.length} rejected)`);
+            await this.requestRideToMultipleDrivers(io, [resetTrip], eligibleDrivers);
+          } else {
+            logger.warn(`⚠️ No eligible drivers found for re-dispatch of trip ${tripId}. Trip stays as REQUESTED.`);
+          }
+        } catch (err: any) {
+          logger.error(`Failed to re-broadcast trip ${tripId}: ${err.message}`);
+        }
+
+        // Notify admin
+        await publishAdminTripUpdate(tripId, 'REQUESTED', undefined);
+
+        return resetTrip;
+      } else {
+        logger.info(`🛑 Trip ${tripId} has reached max re-dispatch limit (${MAX_REDISPATCH}). Permanently cancelling.`);
+        // Fall through to permanent cancellation below
+      }
+    }
+
+    // ─── 6. PERMANENT CANCELLATION (user/admin cancel, or max re-dispatch exceeded) ──
     const newStatus =
       trip.trip_status === TripStatus.LIVE
-        ? TripStatus.MID_CANCELLED // mid-trip cancellation
-        : TripStatus.CANCELLED; // pre-trip cancellation
+        ? TripStatus.MID_CANCELLED
+        : TripStatus.CANCELLED;
 
-    // ─── 6. PERSIST CANCELLATION ─────────────────────────────────────
     const updatedTrip = await TripRepository.cancelTrip(
       tripId,
-      newStatus, // ✅ use computed status, not raw tripStatus from request
+      newStatus,
       mappedReason,
       cancelBy,
       notes
@@ -615,13 +739,12 @@ export const TripService = {
     // ─── 7. RESET DRIVER AVAILABILITY ───────────────────────────────
     if (trip.driver_id) {
       try {
-        const { DriverRepository } = require('../drivers/driver.repository');
         const driver = await DriverRepository.findById(trip.driver_id);
         if (driver) {
           await DriverRepository.update(trip.driver_id, {
             availability: {
               ...driver.availability,
-              status: 'ONLINE',
+              status: DriverAvailabilityStatus.ONLINE,
             },
           });
         }
@@ -638,7 +761,6 @@ export const TripService = {
         : null;
 
       if (cancelBy === CancelBy.DRIVER) {
-        // Notify USER that driver cancelled
         if (userfcmtoken) {
           await UserNotifications.rideCancelled(userfcmtoken, tripId, mappedReason, cancelBy);
         }
@@ -651,7 +773,6 @@ export const TripService = {
           );
         }
       } else if (cancelBy === CancelBy.USER) {
-        // Notify DRIVER that user cancelled
         if (driverfcmtoken) {
           await DriverNotifications.rideCancelled(driverfcmtoken, tripId, mappedReason, cancelBy);
         }
@@ -659,7 +780,6 @@ export const TripService = {
           await UserNotifications.bookingCancelled(userfcmtoken, tripId, mappedReason, cancelBy);
         }
       } else if (cancelBy === CancelBy.ADMIN) {
-        // Notify BOTH user and driver
         if (userfcmtoken) {
           await UserNotifications.rideCancelled(userfcmtoken, tripId, mappedReason, cancelBy);
         }
@@ -672,7 +792,7 @@ export const TripService = {
     }
 
     await TripTransactionService.logEvent({
-      trip_id: updatedTrip.trip_id,
+      trip_id: updatedTrip.trip_id!,
       event_type: TripEventType.TripCancelled,
       actor_type: cancelBy === CancelBy.USER ? ActorType.User : ActorType.Driver,
       actor_id: cancelBy === CancelBy.USER ? trip?.user_id : trip?.driver_id,
@@ -693,7 +813,6 @@ export const TripService = {
 
     // 🛡️ PRODUCTION: Also emit TRIP_REMOVED so the driver screen clears immediately
     try {
-      const { emitToRoom } = require('../../sockets/socket');
       if (trip?.driver_id) {
         emitToRoom(`driver_${trip.driver_id}`, 'TRIP_REMOVED', { tripId: tripId });
       }
