@@ -5,6 +5,7 @@ import { TripValidation } from '../trip/trip.validator';
 const addressSchema = Joi.object({
   street: Joi.string().required(),
   city: Joi.string().required(),
+  district: Joi.string().required(),
   state: Joi.string().required(),
   country: Joi.string().required(),
   pincode: Joi.string().required(),

@@ -49,7 +49,7 @@ export const TripRepository = {
       requestedCond += ` AND NOT EXISTS (
         SELECT 1 FROM trip_skips ts 
         WHERE ts.trip_id = t.trip_id AND ts.driver_id = $${params.length + 1}
-      )`;
+      ) AND NOT (COALESCE(t.rejected_drivers, '[]'::jsonb) @> to_jsonb($${params.length + 1}::text))`;
       params.push(driverId);
     }
     statusConditions.push(`(${requestedCond})`);
@@ -601,5 +601,43 @@ export const TripRepository = {
       [userId]
     );
     return parseInt(result.rows[0].count, 10);
+  },
+  async resetForRedispatch(tripId: string, cancelledDriverId: string): Promise<Trip | null> {
+    const sql = `
+      UPDATE trips 
+      SET 
+        trip_status = 'REQUESTED',
+        driver_id = NULL,
+        cancel_reason = NULL,
+        cancel_by = NULL,
+        notes = NULL,
+        re_dispatch_count = COALESCE(re_dispatch_count, 0) + 1,
+        rejected_drivers = COALESCE(rejected_drivers, '[]'::jsonb) || to_jsonb($2::text),
+        updated_at = NOW()
+      WHERE trip_id = $1
+      RETURNING *;
+    `;
+    try {
+      const result = await query(sql, [tripId, cancelledDriverId]);
+      return result.rows[0] || null;
+    } catch (error) {
+      logger.error(`Database Error in resetForRedispatch: ${error}`);
+      throw new Error('Failed to reset trip for re-dispatch');
+    }
+  },
+
+  async getRedispatchCount(tripId: string): Promise<{ count: number; rejectedDrivers: string[] }> {
+    const sql = `SELECT COALESCE(re_dispatch_count, 0) as count, COALESCE(rejected_drivers, '[]'::jsonb) as rejected_drivers FROM trips WHERE trip_id = $1;`;
+    try {
+      const result = await query(sql, [tripId]);
+      if (!result.rows[0]) return { count: 0, rejectedDrivers: [] };
+      return {
+        count: parseInt(result.rows[0].count, 10),
+        rejectedDrivers: result.rows[0].rejected_drivers || [],
+      };
+    } catch (error) {
+      logger.error(`Database Error in getRedispatchCount: ${error}`);
+      return { count: 0, rejectedDrivers: [] };
+    }
   },
 };

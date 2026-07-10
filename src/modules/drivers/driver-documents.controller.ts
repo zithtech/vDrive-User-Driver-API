@@ -32,7 +32,16 @@ export class DriverDocumentsController {
       );
 
       return successResponse(res, 201, 'Document saved successfully', document);
-    } catch (error) {
+    } catch (error: any) {
+      // Handle OCR validation errors with specific error codes
+      if (error?.statusCode === 400 && error?.errorCode) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+          errorCode: error.errorCode,
+          detectedDocumentType: error.detectedDocumentType || null,
+        });
+      }
       next(error);
     }
   }

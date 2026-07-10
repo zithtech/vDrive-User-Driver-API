@@ -5,6 +5,7 @@ import { query } from '../../shared/database';
 import { DriverRepository } from './driver.repository';
 import { DriverNotifications } from '../notifications/driver.notification';
 import { DriverOnboardingStatus } from '../../enums/user.enums';
+import { validateDocument } from '../../services/ocr.service';
 
 export class DriverDocumentsService {
   static async getDriverDocuments(driverId: string): Promise<DriverDocument[]> {
@@ -25,18 +26,63 @@ export class DriverDocumentsService {
     logger.info(`Upserting document for driver: ${driverId}, type: ${documentType}`);
     const document = await DriverDocumentsRepository.upsert(driverId, documentType, documentUrl);
 
-    // Update onboarding status to UPLOADING if not already further
-    // Update onboarding status to ADDRESS_COMPLETED if not already further
-    // Or just leave it as is.
-    // We removed DOCS_UPLOADING from model.
-    // So we don't update status here.
+    // --- OCR VALIDATION ---
+    // Run AI validation on identity documents (skip selfie, police verification)
+    try {
+      // Resolve the image URL from the documentUrl object
+      let imageUrlForOCR = '';
+      if (typeof documentUrl === 'object' && documentUrl !== null) {
+        imageUrlForOCR = documentUrl.front || documentUrl.url || documentUrl.back || '';
+      } else if (typeof documentUrl === 'string') {
+        imageUrlForOCR = documentUrl;
+      }
 
-    // TEMPORARY: Sync overall KYC status immediately after upload for auto-verification
-    // This allows the driver to see "Verified" (temporary) in the UI
+      if (imageUrlForOCR) {
+        const ocrResult = await validateDocument(imageUrlForOCR, documentType);
+
+        // Save OCR data to the document record
+        await DriverDocumentsRepository.updateOCRData(document.id, {
+          ocr_extracted_number: ocrResult.extractedNumber,
+          ocr_extracted_name: ocrResult.extractedName,
+          ocr_extracted_expiry: ocrResult.extractedExpiry,
+          ocr_status: ocrResult.ocrStatus,
+          ocr_raw_text: ocrResult.rawText,
+        });
+
+        // If OCR validation failed, reject the document and throw error
+        if (!ocrResult.isValid && ocrResult.errorCode) {
+          await DriverDocumentsRepository.rejectWithReason(
+            document.id,
+            ocrResult.errorMessage || 'Document validation failed'
+          );
+
+          logger.warn(
+            `[OCR] Document REJECTED for driver ${driverId}: ${ocrResult.errorCode} - ${ocrResult.errorMessage}`
+          );
+
+          throw {
+            statusCode: 400,
+            errorCode: ocrResult.errorCode,
+            message: ocrResult.errorMessage,
+            detectedDocumentType: ocrResult.detectedDocumentType,
+          };
+        }
+      }
+    } catch (ocrError: any) {
+      // Re-throw OCR validation errors (our own 400 errors)
+      if (ocrError?.statusCode === 400) {
+        throw ocrError;
+      }
+      // Log but don't block on infrastructure errors
+      logger.error(`[OCR] Non-blocking OCR error for ${documentType}: ${ocrError?.message}`);
+    }
+
+    // Sync overall KYC status immediately after upload
     await this.syncKYCStatus(driverId);
 
     return document;
   }
+
 
   static async submitDocuments(driverId: string): Promise<void> {
     logger.info(`Submitting documents for driver: ${driverId}`);

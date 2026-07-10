@@ -160,3 +160,4 @@ fix_*.js
 inspect_otp.js
 setup_sos_tables.ts
 *.log
+android/app/google-services.json
