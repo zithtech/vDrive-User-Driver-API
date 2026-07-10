@@ -424,10 +424,17 @@ export const DriverService = {
     }
   },
 
-  async findNearbyDrivers(io: Server, lng: number, lat: number, newTrip: Trip, radius: number) {
-    // Business Rule: We only show drivers active in the last 10 mins
-    // const { drivers, searchedRadius } = await DriverRepository.findNearbyDriversExpanding(lng, lat,radius);
-    const drivers = await DriverRepository.findNearbyDrivers(lng, lat, radius);
+  async findNearbyDrivers(io: Server, lng: number, lat: number, newTrip: Trip, radius?: number) {
+    let drivers;
+    let searchedRadius = radius;
+
+    if (radius) {
+      drivers = await DriverRepository.findNearbyDrivers(lng, lat, radius);
+    } else {
+      const result = await DriverRepository.findNearbyDriversExpanding(lng, lat);
+      drivers = result.drivers;
+      searchedRadius = result.searchedRadius;
+    }
 
     if (!drivers || drivers.length === 0) {
       throw new Error('No drivers found in your area.');
@@ -442,8 +449,7 @@ export const DriverService = {
 
       await TripService.requestRideToMultipleDrivers(io, [newTrip], driversWithEta);
     }
-    return { drivers, searchedRadius: radius };
-    // return { drivers, searchedRadius };
+    return { drivers, searchedRadius };
   },
 
   async getAvailableDrivers(lng: number, lat: number, radius: number): Promise<any[]> {

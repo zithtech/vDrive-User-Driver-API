@@ -31,16 +31,16 @@ export const EmailService = {
 
     // 3. Define the mail options
     const mailOptions: SendMailOptions = {
-      from: `"VDrive" <${process.env.EMAIL_USER}>`,
+      from: `"T2Drive" <${process.env.EMAIL_USER}>`,
       // from: {
-      //     name: 'VDrive',
-      //     address: process.env.EMAIL_USER || 'no-reply@vdrive.com'
+      //     name: 'T2Drive',
+      //     address: process.env.EMAIL_USER || 'no-reply@t2drive.com'
       // },
       to: recipient,
       subject: subject,
       html: `
            <p style="margin-bottom: 20px;">Dear Customer,</p>
-        <p style="margin-bottom: 20px;">Thanks for riding with <span style="color: #007bff; font-weight: bold;">VDrive!</span></p>
+        <p style="margin-bottom: 20px;">Thanks for riding with <span style="color: #007bff; font-weight: bold;">T2Drive!</span></p>
 
         <div style="
             background-color: #f0f8ff; 
@@ -61,7 +61,7 @@ export const EmailService = {
         <div style="margin-top: 30px; line-height: 1.5;">
             Thanks and Regards,
             <br>
-            <strong>The VDrive Team</strong>
+            <strong>The T2Drive Team</strong>
         </div>
 
         <div style="
@@ -97,19 +97,19 @@ export const EmailService = {
     if (!recipient) return;
 
     const mailOptions: SendMailOptions = {
-      from: `"VDrive" <${process.env.EMAIL_USER || config.email.user}>`,
+      from: `"T2Drive" <${process.env.EMAIL_USER || config.email.user}>`,
       to: recipient,
-      subject: 'Welcome to VDrive!',
+      subject: 'Welcome to T2Drive!',
       html: `
             <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-                <h2 style="color: #007bff; text-align: center;">Welcome to VDrive!</h2>
+                <h2 style="color: #007bff; text-align: center;">Welcome to T2Drive!</h2>
                 <p style="margin-bottom: 20px;">Hi ${name || 'Customer'},</p>
                 <p style="margin-bottom: 20px;">We are thrilled to have you on board! Get ready for a seamless, safe, and comfortable ride experience.</p>
                 <p style="margin-bottom: 20px;">Your account has been successfully created. Open the app to book your first ride today!</p>
                 <div style="margin-top: 30px; line-height: 1.5;">
                     Thanks and Regards,
                     <br>
-                    <strong>The VDrive Team</strong>
+                    <strong>The T2Drive Team</strong>
                 </div>
                 <div style="font-size: 12px; color: #777; margin-top: 30px; border-top: 1px solid #ddd; padding-top: 15px; line-height: 1.6;">
                     <p style="margin: 0; font-weight: bold;">Need Assistance?</p>
@@ -138,7 +138,7 @@ export const EmailService = {
         : `₹${coupon.discount_value} OFF`;
 
     const mailOptions: SendMailOptions = {
-      from: `"VDrive Offers" <${process.env.EMAIL_USER || config.email.user}>`,
+      from: `"T2Drive Offers" <${process.env.EMAIL_USER || config.email.user}>`,
       to: recipient,
       subject: `Exclusive Offer: Get ${discountText} on your next ride!`,
       html: `
@@ -170,8 +170,8 @@ export const EmailService = {
                     </div>
                 </div>
                 <div style="background-color: #f4f4f4; padding: 20px; text-align: center; font-size: 12px; color: #999;">
-                    <p style="margin: 0 0 10px 0;">You received this email because you are a registered user of VDrive.</p>
-                    <p style="margin: 0;">&copy; 2026 VDrive Technologies. All rights reserved.</p>
+                    <p style="margin: 0 0 10px 0;">You received this email because you are a registered user of T2Drive.</p>
+                    <p style="margin: 0;">&copy; 2026 T2Drive Technologies. All rights reserved.</p>
                     <div style="margin-top: 15px;">
                         <a href="#" style="color: #007bff; text-decoration: none; margin: 0 10px;">Support</a> | 
                         <a href="#" style="color: #007bff; text-decoration: none; margin: 0 10px;">Privacy Policy</a> | 

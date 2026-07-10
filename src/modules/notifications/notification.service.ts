@@ -68,7 +68,7 @@ export const NotificationService = {
 
     try {
       const result = await sendToDevice(token, {
-        title: title || 'vDrive Alert',
+        title: title || 'T2Drive Alert',
         body: body || 'Tap to view details',
         type: data?.type || 'notification',
         data,

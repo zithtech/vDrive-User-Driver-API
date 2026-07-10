@@ -377,7 +377,7 @@ export const DriverRepository = {
     if (driverResult.rows.length === 0) return null;
 
     const driver = driverResult.rows[0];
-    logger.info(`Driver data fetched: ${JSON.stringify(driver)}`);
+    // logger.info(`Driver data fetched: ${JSON.stringify(driver)}`);
     // Get completed trips count
     try {
       const completedTripsResult = await query(

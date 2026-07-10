@@ -93,7 +93,7 @@ export default function registerSupportSocket(io: Server, socket: Socket) {
           ticket_id: ticketId,
           sender_id: '00000000-0000-0000-0000-000000000000',
           sender_type: 'system',
-          message: 'Support session ended by User. Thank you for contacting VDrive Support!',
+          message: 'Support session ended by User. Thank you for contacting T2Drive Support!',
         });
 
         // 1. Update user ticket status to closed
@@ -110,7 +110,7 @@ export default function registerSupportSocket(io: Server, socket: Socket) {
           ticket_id: ticketId,
           sender_id: '00000000-0000-0000-0000-000000000000',
           sender_type: 'system',
-          message: 'Support session ended by Driver. Thank you for contacting VDrive Support!',
+          message: 'Support session ended by Driver. Thank you for contacting T2Drive Support!',
         });
 
         // 1. Update driver ticket status to closed

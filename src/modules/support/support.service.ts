@@ -56,7 +56,7 @@ export const SupportService = {
       sender_id: '00000000-0000-0000-0000-000000000000', // System UUID
       sender_type: 'system',
       message:
-        'Thank you for contacting VDrive Support. We are connecting you to an agent. Please describe your issue in detail.',
+        'Thank you for contacting T2Drive Support. We are connecting you to an agent. Please describe your issue in detail.',
     });
 
     // Notify Admin backend about the new ticket instantly
@@ -142,7 +142,7 @@ export const SupportService = {
       sender_id: '00000000-0000-0000-0000-000000000000', // System UUID
       sender_type: 'system',
       message:
-        'Thank you for contacting VDrive Support. We are connecting you to an agent. Please describe your issue in detail.',
+        'Thank you for contacting T2Drive Support. We are connecting you to an agent. Please describe your issue in detail.',
     });
 
     // Notify Admin backend about the new ticket instantly
