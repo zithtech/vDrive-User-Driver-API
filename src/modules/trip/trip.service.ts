@@ -904,7 +904,7 @@ export const TripService = {
     return updatedTrip;
   },
 
-  async completeTrip(tripId: string, distance_km?: number, trip_duration_minutes?: number) {
+  async completeTrip(tripId: string, distance_km?: number, trip_duration_minutes?: number, rating?: number) {
     const trip = await TripRepository.findById(tripId);
     if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
@@ -914,6 +914,7 @@ export const TripService = {
       distance_km: distance_km ?? trip.distance_km,
       trip_duration_minutes: trip_duration_minutes ?? trip.trip_duration_minutes,
       payment_status: 'PAID' as any, // Simplified
+      ...(rating !== undefined && { rating }),
     });
 
     const driverId = trip.driver_id;

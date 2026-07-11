@@ -295,8 +295,8 @@ export const TripController = {
   async completeTrip(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { distance_km, trip_duration_minutes } = req.body;
-      const trip = await TripService.completeTrip(id as string, distance_km, trip_duration_minutes);
+      const { distance_km, trip_duration_minutes, rating } = req.body;
+      const trip = await TripService.completeTrip(id as string, distance_km, trip_duration_minutes, rating);
       if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
       notifyAdmin('TRIP_STATUS_UPDATE', {
