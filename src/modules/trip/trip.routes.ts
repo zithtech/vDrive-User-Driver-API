@@ -94,6 +94,21 @@ router.post(
   TripController.destinationReachedTrip
 );
 router.post(
+  '/:id/waiting',
+  validateParams(TripValidation.idValidation),
+  TripController.waitingTrip
+);
+router.post(
+  '/:id/return-start',
+  validateParams(TripValidation.idValidation),
+  TripController.returnStartTrip
+);
+router.post(
+  '/:id/return-reached',
+  validateParams(TripValidation.idValidation),
+  TripController.returnReachedTrip
+);
+router.post(
   '/:id/complete',
   validateParams(TripValidation.idValidation),
   TripController.completeTrip

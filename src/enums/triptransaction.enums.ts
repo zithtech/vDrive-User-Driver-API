@@ -14,6 +14,10 @@ export enum TripEventType {
   TripStarted = 'trip_started',
   TripCompleted = 'trip_completed',
   TripExpired = 'trip_expired',
+  TripDestinationReached = 'trip_destination_reached',
+  TripWaiting = 'trip_waiting',
+  TripReturnStarted = 'trip_return_started',
+  TripReturnReached = 'trip_return_reached',
 
   // Location & Route
   PickupLocationUpdated = 'pickup_location_updated',
