@@ -912,7 +912,7 @@ export const TripService = {
       trip_status: TripStatus.COMPLETED,
       ended_at: new Date(),
       distance_km: distance_km ?? trip.distance_km,
-      trip_duration_minutes: trip_duration_minutes ?? trip.trip_duration_minutes,
+      trip_duration_minutes: trip_duration_minutes !== undefined ? Math.round(trip_duration_minutes) : trip.trip_duration_minutes,
       payment_status: 'PAID' as any, // Simplified
       ...(rating !== undefined && { rating }),
     });
