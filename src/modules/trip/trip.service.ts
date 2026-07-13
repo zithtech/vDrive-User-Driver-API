@@ -1139,6 +1139,79 @@ export const TripService = {
     return updatedTrip;
   },
 
+  async waitingTrip(tripId: string) {
+    const trip = await TripRepository.findById(tripId);
+    if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+
+    await this.updateTrip(tripId, {
+      trip_status: TripStatus.WAITING,
+    });
+
+    const updatedTrip = await TripRepository.findById(tripId);
+
+    try {
+      emitTripUpdate(tripId, TripSocketEvent.WAITING, {
+        tripId,
+        status: TripStatus.WAITING,
+        trip: updatedTrip,
+      });
+    } catch (err: any) {
+      logger.error(`Failed to emit waiting: ${err.message}`);
+    }
+
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
+    return updatedTrip;
+  },
+
+  async returnStartTrip(tripId: string) {
+    const trip = await TripRepository.findById(tripId);
+    if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+
+    await this.updateTrip(tripId, {
+      trip_status: TripStatus.RETURN_STARTED,
+    });
+
+    const updatedTrip = await TripRepository.findById(tripId);
+
+    try {
+      emitTripUpdate(tripId, TripSocketEvent.RETURN_STARTED, {
+        tripId,
+        status: TripStatus.RETURN_STARTED,
+        trip: updatedTrip,
+      });
+    } catch (err: any) {
+      logger.error(`Failed to emit return started: ${err.message}`);
+    }
+
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
+    return updatedTrip;
+  },
+
+  async returnReachedTrip(tripId: string) {
+    const trip = await TripRepository.findById(tripId);
+    if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+
+    await this.updateTrip(tripId, {
+      trip_status: TripStatus.RETURN_REACHED,
+    });
+
+    const updatedTrip = await TripRepository.findById(tripId);
+
+    try {
+      emitTripUpdate(tripId, TripSocketEvent.RETURN_REACHED, {
+        tripId,
+        status: TripStatus.RETURN_REACHED,
+        trip: updatedTrip,
+      });
+    } catch (err: any) {
+      logger.error(`Failed to emit return reached: ${err.message}`);
+    }
+
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
+    return updatedTrip;
+  },
+
+
   async getActiveTrip(driverId: string) {
     return await TripRepository.findActiveByDriverId(driverId);
   },

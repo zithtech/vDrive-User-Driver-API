@@ -323,7 +323,7 @@ export const TripRepository = {
 
        AND t.trip_status NOT IN ('COMPLETED', 'CANCELLED','MID_CANCELLED')
        AND (
-         (t.booking_type = 'LIVE' AND t.trip_status = 'LIVE')
+         (t.booking_type = 'LIVE' AND t.trip_status IN ('ASSIGNED', 'ACCEPTED', 'VERIFICATION_PENDING', 'ARRIVING', 'ARRIVED', 'LIVE', 'DESTINATION_REACHED', 'WAITING', 'RETURN_STARTED', 'RETURN_REACHED'))
          OR
          (t.booking_type = 'SCHEDULED')
        )
@@ -576,8 +576,8 @@ export const TripRepository = {
               ) AS user_details
       FROM trips t
       LEFT JOIN users u ON t.user_id = u.id
-      WHERE t.driver_id = $1 
-      AND t.trip_status IN ('ASSIGNED', 'ACCEPTED', 'VERIFICATION_PENDING', 'ARRIVING', 'ARRIVED', 'LIVE', 'DESTINATION_REACHED')
+      WHERE t.driver_id = $1
+      AND t.trip_status IN ('ASSIGNED', 'ACCEPTED', 'VERIFICATION_PENDING', 'ARRIVING', 'ARRIVED', 'LIVE', 'DESTINATION_REACHED', 'WAITING', 'RETURN_STARTED', 'RETURN_REACHED')
       ORDER BY t.created_at DESC
       LIMIT 1;`,
       [driverId]
