@@ -295,8 +295,8 @@ export const TripController = {
   async completeTrip(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { distance_km, trip_duration_minutes } = req.body;
-      const trip = await TripService.completeTrip(id as string, distance_km, trip_duration_minutes);
+      const { distance_km, trip_duration_minutes, rating } = req.body;
+      const trip = await TripService.completeTrip(id as string, distance_km, trip_duration_minutes, rating);
       if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
       notifyAdmin('TRIP_STATUS_UPDATE', {
@@ -362,19 +362,36 @@ export const TripController = {
     }
   },
 
-  async startReturnTrip(req: Request, res: Response, next: NextFunction) {
+  async waitingTrip(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const trip = await TripService.startReturnTrip(id as string);
+      const trip = await TripService.waitingTrip(id as string);
       if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
       notifyAdmin('TRIP_STATUS_UPDATE', {
         id: trip.trip_id,
         status: trip.trip_status,
       });
-      return successResponse(res, 200, 'Return trip started successfully', trip);
+      return successResponse(res, 200, 'Driver is waiting at destination', trip);
     } catch (err: any) {
-      logger.error(`startReturnTrip error: ${err.message}`);
+      logger.error(`waitingTrip error: ${err.message}`);
+      next(err);
+    }
+  },
+
+  async returnStartTrip(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const trip = await TripService.returnStartTrip(id as string);
+      if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+
+      notifyAdmin('TRIP_STATUS_UPDATE', {
+        id: trip.trip_id,
+        status: trip.trip_status,
+      });
+      return successResponse(res, 200, 'Driver started return trip', trip);
+    } catch (err: any) {
+      logger.error(`returnStartTrip error: ${err.message}`);
       next(err);
     }
   },
@@ -389,7 +406,7 @@ export const TripController = {
         id: trip.trip_id,
         status: trip.trip_status,
       });
-      return successResponse(res, 200, 'Return destination reached successfully', trip);
+      return successResponse(res, 200, 'Driver reached original pickup successfully', trip);
     } catch (err: any) {
       logger.error(`returnReachedTrip error: ${err.message}`);
       next(err);

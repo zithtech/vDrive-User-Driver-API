@@ -15,6 +15,10 @@ export enum TripStatus {
   Completed = 'COMPLETED',
   Cancelled = 'CANCELLED',
   Expired = 'EXPIRED',
+  DestinationReached = 'DESTINATION_REACHED',
+  Waiting = 'WAITING',
+  ReturnStarted = 'RETURN_STARTED',
+  ReturnReached = 'RETURN_REACHED',
 }
 
 // ─── Full lifecycle order ─────────────────────────────────────────────────────
@@ -53,6 +57,38 @@ export const FIELD_CHANGE_RULES: FieldChangeRule[] = [
     actor: ActorType.Driver,
     priority: 100,
     description: 'Trip started — driver picked up passenger',
+  },
+  {
+    field: 'trip_status',
+    toValue: TripStatus.DestinationReached,
+    event: TripEventType.TripDestinationReached,
+    actor: ActorType.Driver,
+    priority: 100,
+    description: 'Driver reached the destination',
+  },
+  {
+    field: 'trip_status',
+    toValue: TripStatus.Waiting,
+    event: TripEventType.TripWaiting,
+    actor: ActorType.Driver,
+    priority: 100,
+    description: 'Driver is waiting at destination',
+  },
+  {
+    field: 'trip_status',
+    toValue: TripStatus.ReturnStarted,
+    event: TripEventType.TripReturnStarted,
+    actor: ActorType.Driver,
+    priority: 100,
+    description: 'Driver started the return trip',
+  },
+  {
+    field: 'trip_status',
+    toValue: TripStatus.ReturnReached,
+    event: TripEventType.TripReturnReached,
+    actor: ActorType.Driver,
+    priority: 100,
+    description: 'Driver reached original pickup (return trip complete)',
   },
   {
     field: 'trip_status',
