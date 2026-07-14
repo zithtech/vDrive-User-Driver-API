@@ -37,6 +37,8 @@ export const TripValidation = {
     discount: tripSchema.discountRule.optional(),
     applied_coupon_id: tripSchema.appliedCouponIdRule.optional(),
     trip_duration_minutes: tripSchema.tripDurationMinutesRule.optional(),
+    package_hours: tripSchema.packageHoursRule.optional(),
+    outstation_trip_type: tripSchema.outstationTripTypeRule.optional(),
   }),
 
   updateTripValidation: Joi.object()
@@ -67,6 +69,8 @@ export const TripValidation = {
       vehicle_model: tripSchema.vehicleModelRule.optional(),
       vehicle_type: tripSchema.vehicleTypeRule.optional(),
       transmission_type: tripSchema.transmissionTypeRule.optional(),
+      package_hours: tripSchema.packageHoursRule.optional(),
+      outstation_trip_type: tripSchema.outstationTripTypeRule.optional(),
     })
     .min(1)
     .messages({

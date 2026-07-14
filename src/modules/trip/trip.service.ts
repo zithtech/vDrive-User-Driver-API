@@ -1105,15 +1105,24 @@ export const TripService = {
     const trip = await TripRepository.findById(tripId);
     if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-    await this.updateTrip(tripId, {
-      trip_status: TripStatus.DESTINATION_REACHED,
-    });
+    const isRoundOrOutstation = trip.ride_type === 'ROUND_TRIP' || trip.ride_type === 'OUTSTATION';
+    const newStatus = isRoundOrOutstation ? TripStatus.WAITING : TripStatus.DESTINATION_REACHED;
+
+    const updateData: Partial<Trip> = {
+      trip_status: newStatus,
+    };
+    if (isRoundOrOutstation) {
+      updateData.wait_started_at = new Date();
+    }
+
+    await this.updateTrip(tripId, updateData);
 
     const driver = trip.driver_id ? await DriverRepository.findById(trip.driver_id) : null;
     // Notify User
     try {
       const fcmToken = await UserRepository.getFcmTokenById(trip.user_id);
       if (fcmToken) {
+        // Notification message differentiates via frontend parsing, but here we just send standard destinationReached
         await UserNotifications.destinationReached(fcmToken, driver?.full_name || 'Driver', tripId);
       }
     } catch (err: any) {
@@ -1122,18 +1131,120 @@ export const TripService = {
 
     const updatedTrip = await TripRepository.findById(tripId);
 
-    // broadcastTripUpdate(tripId, { status: TripStatus.ARRIVED, type: 'trip_updated', trip: updatedTrip });
-
     try {
-      emitTripUpdate(tripId, TripSocketEvent.DESTINATION_REACHED, {
+      emitTripUpdate(tripId, isRoundOrOutstation ? TripSocketEvent.TRIP_UPDATED : TripSocketEvent.DESTINATION_REACHED, {
         tripId,
-        status: TripStatus.DESTINATION_REACHED,
+        status: newStatus,
         trip: updatedTrip,
       });
     } catch (err: any) {
       logger.error(`Failed to emit trip arrival: ${err.message}`);
     }
 
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
+    return updatedTrip;
+  },
+
+  async haltDayTrip(tripId: string) {
+    const trip = await TripRepository.findById(tripId);
+    if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+
+    if (trip.ride_type !== 'OUTSTATION') {
+      throw { statusCode: 400, message: 'Day halt is only available for outstation trips.' };
+    }
+    if (trip.trip_status !== TripStatus.WAITING) {
+      throw { statusCode: 400, message: 'Can only halt day from WAITING status.' };
+    }
+
+    await this.updateTrip(tripId, {
+      trip_status: TripStatus.DAY_HALT,
+      day_halt_started_at: new Date(),
+    });
+
+    const updatedTrip = await TripRepository.findById(tripId);
+    try {
+      emitTripUpdate(tripId, TripSocketEvent.TRIP_UPDATED, {
+        tripId,
+        status: TripStatus.DAY_HALT,
+        trip: updatedTrip,
+      });
+    } catch (err) {}
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
+    return updatedTrip;
+  },
+
+  async resumeDayTrip(tripId: string) {
+    const trip = await TripRepository.findById(tripId);
+    if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+
+    if (trip.ride_type !== 'OUTSTATION') {
+      throw { statusCode: 400, message: 'Resume is only available for outstation trips.' };
+    }
+    if (trip.trip_status !== TripStatus.DAY_HALT) {
+      throw { statusCode: 400, message: 'Can only resume from DAY_HALT status.' };
+    }
+
+    await this.updateTrip(tripId, {
+      trip_status: TripStatus.WAITING,
+    });
+
+    const updatedTrip = await TripRepository.findById(tripId);
+    try {
+      emitTripUpdate(tripId, TripSocketEvent.TRIP_UPDATED, {
+        tripId,
+        status: TripStatus.WAITING,
+        trip: updatedTrip,
+      });
+    } catch (err) {}
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
+    return updatedTrip;
+  },
+
+  async startReturnTrip(tripId: string) {
+    const trip = await TripRepository.findById(tripId);
+    if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+
+    if (trip.trip_status !== TripStatus.WAITING && trip.trip_status !== TripStatus.DAY_HALT) {
+      throw { statusCode: 400, message: 'Can only start return trip from WAITING or DAY_HALT status.' };
+    }
+
+    await this.updateTrip(tripId, {
+      trip_status: TripStatus.RETURN_STARTED,
+      return_started_at: new Date(),
+    });
+
+    const updatedTrip = await TripRepository.findById(tripId);
+    try {
+      emitTripUpdate(tripId, TripSocketEvent.TRIP_UPDATED, {
+        tripId,
+        status: TripStatus.RETURN_STARTED,
+        trip: updatedTrip,
+      });
+    } catch (err) {}
+    if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
+    return updatedTrip;
+  },
+
+  async returnReachedTrip(tripId: string) {
+    const trip = await TripRepository.findById(tripId);
+    if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+
+    if (trip.trip_status !== TripStatus.RETURN_STARTED) {
+      throw { statusCode: 400, message: 'Can only reach return destination from RETURN_STARTED status.' };
+    }
+
+    await this.updateTrip(tripId, {
+      trip_status: TripStatus.RETURN_REACHED,
+    });
+
+    const updatedTrip = await TripRepository.findById(tripId);
+    try {
+      emitTripUpdate(tripId, TripSocketEvent.DESTINATION_REACHED, {
+        tripId,
+        status: TripStatus.RETURN_REACHED,
+        trip: updatedTrip,
+      });
+    } catch (err) {}
     if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
     return updatedTrip;
   },

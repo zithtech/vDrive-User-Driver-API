@@ -59,11 +59,17 @@ export interface Trip {
   assigned_at?: Date;
   started_at?: Date;
   ended_at?: Date;
+  wait_started_at?: Date;
+  day_halt_started_at?: Date;
+  return_started_at?: Date;
+  day_halt_charges?: number;
   created_by?: string;
   updated_by?: string;
   applied_coupon_id?: string;
   coupon_code?: string;
   discount?: number;
+  package_hours?: number;
+  outstation_trip_type?: string;
   created_at?: Date;
   updated_at?: Date;
   rejected_drivers?: string[];
@@ -144,7 +150,13 @@ export interface TripDetailsType {
   assigned_at: string | null;
   started_at: string | null;
   ended_at: string | null;
+  wait_started_at: string | null;
+  day_halt_started_at: string | null;
+  return_started_at: string | null;
+  day_halt_charges: number | null;
 
+  package_hours: number | null;
+  outstation_trip_type: string | null;
   trip_code: string;
   trip_transactions: any[];
 }

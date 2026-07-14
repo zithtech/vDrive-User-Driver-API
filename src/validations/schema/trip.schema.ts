@@ -305,3 +305,11 @@ export const discountRule = Joi.number().allow('', null).optional().messages({
 export const appliedCouponIdRule = Joi.string().allow('', null).optional().messages({
   'string.base': 'applied_coupon_id must be a string',
 });
+
+export const packageHoursRule = Joi.number().optional().messages({
+  'number.base': 'package_hours must be a number',
+});
+
+export const outstationTripTypeRule = Joi.string().optional().messages({
+  'string.base': 'outstation_trip_type must be a string',
+});

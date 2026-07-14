@@ -362,6 +362,40 @@ export const TripController = {
     }
   },
 
+  async startReturnTrip(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const trip = await TripService.startReturnTrip(id as string);
+      if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+
+      notifyAdmin('TRIP_STATUS_UPDATE', {
+        id: trip.trip_id,
+        status: trip.trip_status,
+      });
+      return successResponse(res, 200, 'Return trip started successfully', trip);
+    } catch (err: any) {
+      logger.error(`startReturnTrip error: ${err.message}`);
+      next(err);
+    }
+  },
+
+  async returnReachedTrip(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const trip = await TripService.returnReachedTrip(id as string);
+      if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+
+      notifyAdmin('TRIP_STATUS_UPDATE', {
+        id: trip.trip_id,
+        status: trip.trip_status,
+      });
+      return successResponse(res, 200, 'Return destination reached successfully', trip);
+    } catch (err: any) {
+      logger.error(`returnReachedTrip error: ${err.message}`);
+      next(err);
+    }
+  },
+
   //Admin
   async getAllTripsWithChanges(req: Request, res: Response, next: NextFunction) {
     try {
