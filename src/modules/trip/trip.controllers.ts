@@ -610,11 +610,23 @@ export const TripController = {
 
   async getActiveTrip(req: Request, res: Response, next: NextFunction) {
     try {
-      const driverId = req.query.driver_id || (req as any).user?.id;
-      if (!driverId) throw { statusCode: 400, message: 'driver_id is required' };
+      const user = (req as any).user;
+      if (!user) throw { statusCode: 401, message: 'Unauthorized' };
 
-      const trip = await TripService.getActiveTrip(driverId as string);
-      return successResponse(res, 200, 'Active trip fetched successfully', trip);
+      let tripData: any = null;
+
+      if (user.role === 'DRIVER') {
+        const driverId = req.query.driver_id || user.id;
+        tripData = await TripService.getActiveTrip(driverId as string);
+      } else if (user.role === 'USER') {
+        const userId = req.query.user_id || user.id;
+        const trips = await TripService.getActiveTripByUserId(userId as string);
+        if (trips?.activeTrips?.length > 0) {
+          tripData = trips.activeTrips[0];
+        }
+      }
+
+      return successResponse(res, 200, 'Active trip fetched successfully', tripData);
     } catch (err: any) {
       logger.error(`getActiveTrip error: ${err.message}`);
       next(err);

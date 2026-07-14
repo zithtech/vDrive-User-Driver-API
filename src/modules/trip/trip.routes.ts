@@ -6,9 +6,9 @@ import { authMiddleware } from '../auth/auth.middleware';
 
 const router = Router();
 
-// Admin
+// Admin & Active unified route
 router.get('/', TripController.getAllTripsWithChanges);
-router.get('/active', TripController.getActiveTrip);
+router.get('/active', authMiddleware, TripController.getActiveTrip);
 
 //user-driver
 router.get(

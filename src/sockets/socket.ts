@@ -6,6 +6,8 @@ import { TripSocketEvent, TripEventPayload } from './socket.types';
 import { initAdminEventSubscriber, notifyAdmin } from '../shared/eventBus';
 import registerChatSocket from './chat.socket';
 import registerSupportSocket from './support.socket';
+import jwt from 'jsonwebtoken';
+import config from '../config';
 
 let io: Server;
 
@@ -23,8 +25,53 @@ export const initSocket = (server: HttpServer): Server => {
     transports: ['websocket', 'polling'],
   });
 
-  io.on('connection', (socket: Socket) => {
-    logger.info(`Socket connected: ${socket.id}`);
+  io.use((socket: any, next) => {
+    const token = socket.handshake.auth?.token;
+    if (!token) {
+      return next(new Error('Authentication error: No token provided'));
+    }
+    try {
+      const decoded = jwt.verify(token, config.jwt.secret) as any;
+      socket.userId = decoded.role === 'USER' ? decoded.id : undefined;
+      socket.driverId = decoded.role === 'DRIVER' ? decoded.id : undefined;
+      socket.role = decoded.role;
+      next();
+    } catch (err) {
+      next(new Error('Authentication error: Invalid token'));
+    }
+  });
+
+  io.on('connection', async (socket: any) => {
+    logger.info(`Socket authenticated & connected: ${socket.id} | Role: ${socket.role} | ID: ${socket.userId || socket.driverId}`);
+
+    // Join Permanent Room
+    if (socket.userId) {
+      socket.join(`user_${socket.userId}`);
+      logger.info(`User ${socket.userId} joined permanent room: user_${socket.userId}`);
+    } else if (socket.driverId) {
+      socket.join(`driver_${socket.driverId}`);
+      logger.info(`Driver ${socket.driverId} joined permanent room: driver_${socket.driverId}`);
+    }
+
+    // Restore Active Trip
+    try {
+      let activeTrip: any = null;
+      if (socket.userId) {
+        const tripData = await TripService.getActiveTripByUserId(socket.userId);
+        if (tripData?.activeTrips?.length > 0) {
+          activeTrip = tripData.activeTrips[0];
+        }
+      } else if (socket.driverId) {
+        activeTrip = await TripService.getActiveTrip(socket.driverId);
+      }
+
+      if (activeTrip && activeTrip.trip_id) {
+        socket.join(`trip_${activeTrip.trip_id}`);
+        logger.info(`Socket ${socket.id} auto-joined restored active trip room: trip_${activeTrip.trip_id}`);
+      }
+    } catch (err) {
+      logger.error(`Error restoring active trip for socket ${socket.id}:`, err);
+    }
 
     handleRoomJoins(socket);
     handleDriverLocation(socket);
@@ -188,6 +235,27 @@ const handleDriverLocation = (socket: Socket): void => {
       } catch (err) {
         logger.error(`Error updating driver location for trip ${data.rideId}:`, err);
       }
+    }
+  );
+
+  socket.on(
+    'user_location_update',
+    (data: {
+      tripId: string;
+      userId: string;
+      latitude: number;
+      longitude: number;
+      heading?: number;
+    }) => {
+      if (!data.tripId || !data.userId || data.latitude === undefined || data.longitude === undefined) return;
+      
+      emitToRoom(`trip_${data.tripId}`, 'userLocationUpdate', {
+        userId: data.userId,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        heading: data.heading,
+      });
+      // logger.info(`📡 Broadcasted userLocationUpdate for trip_${data.tripId} | Lat: ${data.latitude.toFixed(5)} Lng: ${data.longitude.toFixed(5)}`);
     }
   );
 };
