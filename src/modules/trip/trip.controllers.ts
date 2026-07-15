@@ -413,6 +413,31 @@ export const TripController = {
     }
   },
 
+  async toggleDayHalt(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { is_day_halt } = req.body;
+      
+      let trip;
+      if (is_day_halt) {
+        trip = await TripService.haltDayTrip(id as string);
+      } else {
+        trip = await TripService.resumeDayTrip(id as string);
+      }
+      
+      if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+
+      notifyAdmin('TRIP_STATUS_UPDATE', {
+        id: trip.trip_id,
+        status: trip.trip_status,
+      });
+      return successResponse(res, 200, `Day halt ${is_day_halt ? 'enabled' : 'disabled'} successfully`, trip);
+    } catch (err: any) {
+      logger.error(`toggleDayHalt error: ${err.message}`);
+      next(err);
+    }
+  },
+
   //Admin
   async getAllTripsWithChanges(req: Request, res: Response, next: NextFunction) {
     try {

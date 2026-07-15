@@ -1154,6 +1154,9 @@ export const TripService = {
     if (trip.ride_type !== 'OUTSTATION_ONE_WAY' && trip.ride_type !== 'OUTSTATION_ROUND_TRIP') {
       throw { statusCode: 400, message: 'Day halt is only available for outstation trips.' };
     }
+    if (trip.trip_status === TripStatus.DAY_HALT) {
+      return trip; // Already halted
+    }
     if (trip.trip_status !== TripStatus.WAITING) {
       throw { statusCode: 400, message: 'Can only halt day from WAITING status.' };
     }
@@ -1181,6 +1184,9 @@ export const TripService = {
 
     if (trip.ride_type !== 'OUTSTATION_ONE_WAY' && trip.ride_type !== 'OUTSTATION_ROUND_TRIP') {
       throw { statusCode: 400, message: 'Resume is only available for outstation trips.' };
+    }
+    if (trip.trip_status === TripStatus.WAITING) {
+      return trip; // Already resumed
     }
     if (trip.trip_status !== TripStatus.DAY_HALT) {
       throw { statusCode: 400, message: 'Can only resume from DAY_HALT status.' };
