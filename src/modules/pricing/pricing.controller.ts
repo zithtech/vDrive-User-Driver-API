@@ -67,8 +67,8 @@ export const PricingController = {
         `${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`;
 
       // Round trip never adds a return charge; everything else is treated as one-way
-      const trip_type = value.ride_type === 'ROUND_TRIP' ? 'round_trip' : 'one_way';
-      const is_outstation = value.ride_type === 'OUTSTATION';
+      const trip_type = (value.ride_type === 'ROUND_TRIP' || value.ride_type === 'OUTSTATION_ROUND_TRIP') ? 'round_trip' : 'one_way';
+      const is_outstation = value.ride_type === 'OUTSTATION_ONE_WAY' || value.ride_type === 'OUTSTATION_ROUND_TRIP';
       const days = value.days && value.days > 0 ? value.days : 1;
 
       // Estimate duration from distance if the app didn't send it

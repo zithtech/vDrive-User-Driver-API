@@ -465,7 +465,7 @@ export const TripController = {
         trip_id: uuidv4(),
         user_id: 'a5010ad7-c629-4db9-841c-6fd29c8e14a4', // Demo user
         vehicle_id: vehicle_id || null,
-        ride_type: RideType.OUTSTATION,
+        ride_type: RideType.OUTSTATION_ONE_WAY,
         service_type: ServiceType.DRIVER_ONLY,
         trip_status: TripStatus.REQUESTED,
         scheduled_start_time: tomorrow,

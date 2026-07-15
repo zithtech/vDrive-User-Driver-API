@@ -89,7 +89,7 @@ export interface TripDetailsType {
   car_number: string | null;
   car_type: string | null;
 
-  ride_type: 'ONE_WAY' | 'ROUND_TRIP' | 'OUTSTATION';
+  ride_type: 'ONE_WAY' | 'ROUND_TRIP' | 'OUTSTATION_ONE_WAY' | 'OUTSTATION_ROUND_TRIP';
   service_type: 'DRIVER_ONLY' | 'CAB+DRIVER';
 
   trip_status: 'LIVE' | 'COMPLETED' | 'CANCELLED' | 'UPCOMING' | 'REQUESTED' | 'MID-CANCELLED';
