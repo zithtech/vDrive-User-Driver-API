@@ -1106,7 +1106,7 @@ export const TripService = {
     const trip = await TripRepository.findById(tripId);
     if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-    const isRoundOrOutstation = trip.ride_type === 'ROUND_TRIP' || trip.ride_type === 'OUTSTATION';
+    const isRoundOrOutstation = trip.ride_type === 'ROUND_TRIP' || trip.ride_type === 'OUTSTATION_ROUND_TRIP' || trip.ride_type === 'OUTSTATION_ONE_WAY';
     const newStatus = isRoundOrOutstation ? TripStatus.WAITING : TripStatus.DESTINATION_REACHED;
 
     const updateData: Partial<Trip> = {
@@ -1151,8 +1151,11 @@ export const TripService = {
     const trip = await TripRepository.findById(tripId);
     if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-    if (trip.ride_type !== 'OUTSTATION') {
+    if (trip.ride_type !== 'OUTSTATION_ONE_WAY' && trip.ride_type !== 'OUTSTATION_ROUND_TRIP') {
       throw { statusCode: 400, message: 'Day halt is only available for outstation trips.' };
+    }
+    if (trip.trip_status === TripStatus.DAY_HALT) {
+      return trip; // Already halted
     }
     if (trip.trip_status !== TripStatus.WAITING) {
       throw { statusCode: 400, message: 'Can only halt day from WAITING status.' };
@@ -1179,8 +1182,11 @@ export const TripService = {
     const trip = await TripRepository.findById(tripId);
     if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-    if (trip.ride_type !== 'OUTSTATION') {
+    if (trip.ride_type !== 'OUTSTATION_ONE_WAY' && trip.ride_type !== 'OUTSTATION_ROUND_TRIP') {
       throw { statusCode: 400, message: 'Resume is only available for outstation trips.' };
+    }
+    if (trip.trip_status === TripStatus.WAITING) {
+      return trip; // Already resumed
     }
     if (trip.trip_status !== TripStatus.DAY_HALT) {
       throw { statusCode: 400, message: 'Can only resume from DAY_HALT status.' };
