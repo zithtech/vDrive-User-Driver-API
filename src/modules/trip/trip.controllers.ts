@@ -28,7 +28,7 @@ export const TripController = {
 
       const trips = await TripService.getTrips(booking_type as string, driverId, onboardingStatus);
       if (!trips) {
-        throw { statusCode: 204, message: 'Trip data are Empty' };
+        return successResponse(res, 200, 'Trips fetched successfully', []);
       }
       return successResponse(res, 200, 'Trips fetched successfully', trips);
     } catch (err: any) {
