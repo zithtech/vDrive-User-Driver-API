@@ -1173,7 +1173,7 @@ export const TripService = {
         status: TripStatus.DAY_HALT,
         trip: updatedTrip,
       });
-    } catch (err) {}
+    } catch (err) { }
     if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
     return updatedTrip;
   },
@@ -1203,7 +1203,7 @@ export const TripService = {
         status: TripStatus.WAITING,
         trip: updatedTrip,
       });
-    } catch (err) {}
+    } catch (err) { }
     if (updatedTrip) await publishAdminTripUpdate(tripId, updatedTrip.trip_status, updatedTrip.driver_id);
     return updatedTrip;
   },

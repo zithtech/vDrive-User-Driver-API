@@ -10,7 +10,7 @@ export const PricingValidation = {
     }),
     duration_min: Joi.number().min(0).optional(), // estimated from distance if omitted
     ride_type: Joi.string()
-      .valid('ONE_WAY', 'ROUND_TRIP', 'OUTSTATION_ONE_WAY','OUTSTATION_ROUND_TRIP', 'SCHEDULED')
+      .valid('ONE_WAY', 'ROUND_TRIP', 'OUTSTATION_ONE_WAY', 'OUTSTATION_ROUND_TRIP', 'SCHEDULED')
       .default('ONE_WAY'),
     days: Joi.number().integer().min(1).default(1), // outstation: number of days
     driver_type: Joi.string().valid('normal', 'elite', 'premium').optional(),
