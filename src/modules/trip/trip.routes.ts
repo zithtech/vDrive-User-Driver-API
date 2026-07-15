@@ -109,6 +109,11 @@ router.post(
   TripController.returnReachedTrip
 );
 router.post(
+  '/:id/toggle-day-halt',
+  validateParams(TripValidation.idValidation),
+  TripController.toggleDayHalt
+);
+router.post(
   '/:id/complete',
   validateParams(TripValidation.idValidation),
   TripController.completeTrip
