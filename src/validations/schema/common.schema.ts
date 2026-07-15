@@ -132,7 +132,7 @@ export const emergencyContactObject = Joi.object({
     .regex(/^[0-9+]{10,15}$/)
     .required(),
   relationship: Joi.string().required(),
-});
+}).unknown(true);
 
 export const emergencyContactSchema = Joi.array()
   .items(emergencyContactObject)
