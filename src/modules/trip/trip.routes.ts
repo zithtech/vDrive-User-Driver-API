@@ -118,6 +118,11 @@ router.post(
   validateParams(TripValidation.idValidation),
   TripController.completeTrip
 );
+router.post(
+  '/:id/rate-driver',
+  validateParams(TripValidation.idValidation),
+  TripController.rateDriver
+);
 
 // Location History (trip replay)
 router.get(

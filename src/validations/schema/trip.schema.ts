@@ -214,18 +214,27 @@ export const paidAmountRule = Joi.number().min(0).optional().messages({
   'number.min': 'paid_amount cannot be negative',
 });
 
-export const ratingRule = Joi.number().min(1).max(5).optional().messages({
-  'number.base': 'rating must be a number',
-  'number.min': 'rating cannot be less than 1',
-  'number.max': 'rating cannot be greater than 5',
+export const driverRatingRule = Joi.number().min(1).max(5).optional().messages({
+  'number.base': 'driver_rating must be a number',
+  'number.min': 'driver_rating cannot be less than 1',
+  'number.max': 'driver_rating cannot be greater than 5',
 });
 
+export const userRatingRule = Joi.number().min(1).max(5).optional().messages({
+  'number.base': 'user_rating must be a number',
+  'number.min': 'user_rating cannot be less than 1',
+  'number.max': 'user_rating cannot be greater than 5',
+});
 export const notesRule = Joi.string().optional().messages({
   'string.base': 'notes must be a string',
 });
 
-export const feedbackRule = Joi.string().optional().messages({
-  'string.base': 'feedback must be a string',
+export const driverFeedbackRule = Joi.string().allow('').optional().messages({
+  'string.base': 'driver_feedback must be a string',
+});
+
+export const userFeedbackRule = Joi.string().allow('').optional().messages({
+  'string.base': 'user_feedback must be a string',
 });
 
 export const changeTypeRule = enumString(Object.values(ChangeType))
