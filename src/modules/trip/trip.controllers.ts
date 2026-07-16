@@ -28,7 +28,7 @@ export const TripController = {
 
       const trips = await TripService.getTrips(booking_type as string, driverId, onboardingStatus);
       if (!trips) {
-        throw { statusCode: 204, message: 'Trip data are Empty' };
+        return successResponse(res, 200, 'Trips fetched successfully', []);
       }
       return successResponse(res, 200, 'Trips fetched successfully', trips);
     } catch (err: any) {
@@ -295,8 +295,8 @@ export const TripController = {
   async completeTrip(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { distance_km, trip_duration_minutes, rating } = req.body;
-      const trip = await TripService.completeTrip(id as string, distance_km, trip_duration_minutes, rating);
+      const { distance_km, trip_duration_minutes, user_rating, user_feedback } = req.body;
+      const trip = await TripService.completeTrip(id as string, distance_km, trip_duration_minutes, user_rating, user_feedback);
       if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
       notifyAdmin('TRIP_STATUS_UPDATE', {
@@ -307,6 +307,20 @@ export const TripController = {
       return successResponse(res, 200, 'Trip completed successfully', trip);
     } catch (err: any) {
       logger.error(`completeTrip error: ${err.message}`);
+      next(err);
+    }
+  },
+
+  async rateDriver(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { driver_rating, driver_feedback } = req.body;
+      
+      const trip = await TripService.rateDriver(id as string, driver_rating, driver_feedback);
+      
+      return successResponse(res, 200, 'Driver rated successfully', trip);
+    } catch (err: any) {
+      logger.error(`rateDriver error: ${err.message}`);
       next(err);
     }
   },

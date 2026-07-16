@@ -120,6 +120,11 @@ export const TripRepository = {
     return result.rows[0] || null;
   },
 
+  async findByDriverId(driverId: string): Promise<Trip[]> {
+    const result = await query(`SELECT * FROM trips WHERE driver_id = $1`, [driverId]);
+    return result.rows || [];
+  },
+
   async findByUserId(
     userId: string,
     role: string,

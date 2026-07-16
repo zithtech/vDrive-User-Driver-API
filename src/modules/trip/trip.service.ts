@@ -904,7 +904,33 @@ export const TripService = {
     return updatedTrip;
   },
 
-  async completeTrip(tripId: string, distance_km?: number, trip_duration_minutes?: number, rating?: number) {
+  async rateDriver(tripId: string, driver_rating: number, driver_feedback?: string) {
+    const trip = await TripRepository.findById(tripId);
+    if (!trip) throw { statusCode: 404, message: 'Trip not found' };
+
+    const updatedTrip = await this.updateTrip(tripId, {
+      driver_rating,
+      ...(driver_feedback && { driver_feedback }),
+    });
+
+    if (trip.driver_id) {
+      // Recalculate average rating for the driver
+      const driverTrips = await TripRepository.findByDriverId(trip.driver_id);
+      const ratedTrips = driverTrips.filter((t: any) => t.driver_rating && t.driver_rating > 0);
+      if (ratedTrips.length > 0) {
+        const totalRating = ratedTrips.reduce((sum: number, t: any) => sum + t.driver_rating, 0);
+        const averageRating = parseFloat((totalRating / ratedTrips.length).toFixed(2));
+        
+        await DriverRepository.update(trip.driver_id, {
+          rating: averageRating,
+        });
+      }
+    }
+
+    return updatedTrip;
+  },
+
+  async completeTrip(tripId: string, distance_km?: number, trip_duration_minutes?: number, user_rating?: number, user_feedback?: string) {
     const trip = await TripRepository.findById(tripId);
     if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
@@ -914,7 +940,8 @@ export const TripService = {
       distance_km: distance_km ?? trip.distance_km,
       trip_duration_minutes: trip_duration_minutes !== undefined ? Math.round(trip_duration_minutes) : trip.trip_duration_minutes,
       payment_status: 'PAID' as any, // Simplified
-      ...(rating !== undefined && { rating }),
+      ...(user_rating !== undefined && { user_rating }),
+      ...(user_feedback !== undefined && { user_feedback }),
     });
 
     const driverId = trip.driver_id;

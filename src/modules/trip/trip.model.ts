@@ -52,9 +52,11 @@ export interface Trip {
   cancel_reason?: CancelReason;
   cancel_by?: CancelBy;
   notes?: string;
-  rating?: number;
+  driver_rating?: number;
+  user_rating?: number;
+  driver_feedback?: string;
+  user_feedback?: string;
   re_route_id?: string;
-  feedback?: string;
   otp?: string;
   assigned_at?: Date;
   started_at?: Date;
