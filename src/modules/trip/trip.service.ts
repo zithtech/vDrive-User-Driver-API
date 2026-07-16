@@ -410,7 +410,7 @@ export const TripService = {
           distanceToUser: driver.distance_meters,
           eta: driver.eta || null,
 
-          remaining: 15, // UI Timer reset
+          remaining: 20, // UI Timer reset
           createdAt: new Date().toISOString(), // 🕒 Time sync for background/cold-start
         };
 
