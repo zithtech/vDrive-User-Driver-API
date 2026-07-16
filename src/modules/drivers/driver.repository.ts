@@ -247,6 +247,11 @@ export const DriverRepository = {
         driverFields.push(`availability = COALESCE(availability, '{}'::jsonb) || $${paramCount++}`);
         driverValues.push(JSON.stringify(driverData.availability));
       }
+      if (driverData.rating !== undefined) {
+        driverFields.push(`rating = $${paramCount++}`);
+        driverValues.push(driverData.rating);
+      }
+
       if (driverData.performance) {
         // Sync rating to performance object if provided
         const performanceData = { ...driverData.performance };
