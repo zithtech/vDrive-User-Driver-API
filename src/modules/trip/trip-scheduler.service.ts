@@ -109,6 +109,67 @@ export const TripSchedulerService = {
           }
         }
       }
+
+      // 2. Fetch upcoming scheduled rides for User Reminders
+      const userRemindersResult = await query(
+        `SELECT t.*, u.fcm_token as user_fcm_token, u.phone_number as user_phone
+         FROM trips t
+         JOIN users u ON t.user_id = u.id
+         WHERE t.booking_type = 'SCHEDULED' 
+         AND t.trip_status IN ('REQUESTED', 'ACCEPTED')
+         AND t.scheduled_start_time > $1
+         AND t.scheduled_start_time < $1 + INTERVAL '125 minutes'`,
+        [now]
+      );
+
+      for (const trip of userRemindersResult.rows) {
+        const startTime = new Date(trip.scheduled_start_time);
+        const diffMinutes = Math.floor((startTime.getTime() - now.getTime()) / 60000);
+
+        let reminderKey = '';
+        let title = 'Upcoming Ride Reminder';
+        let body = '';
+        let isWakeup = false;
+
+        if (diffMinutes >= 118 && diffMinutes <= 122 && !trip.user_reminders_sent?.two_hour) {
+          reminderKey = 'two_hour';
+          body = `Your scheduled ride at ${trip.pickup_address} will start in 2 hours.`;
+        } else if (diffMinutes >= 58 && diffMinutes <= 62 && !trip.user_reminders_sent?.one_hour) {
+          reminderKey = 'one_hour';
+          body = `Your scheduled ride at ${trip.pickup_address} will start in 1 hour.`;
+        } else if (diffMinutes >= 43 && diffMinutes <= 47 && !trip.user_reminders_sent?.wakeup_45) {
+          reminderKey = 'wakeup_45';
+          title = 'Wakeup Call ⏰';
+          body = `Your scheduled ride starts in 45 minutes! Please be ready.`;
+          isWakeup = true;
+        } else if (diffMinutes >= 28 && diffMinutes <= 32 && !trip.user_reminders_sent?.thirty_min) {
+          reminderKey = 'thirty_min';
+          body = `Your scheduled ride starts in 30 minutes. Be ready at ${trip.pickup_address}.`;
+        }
+
+        if (reminderKey) {
+          if (trip.user_fcm_token) {
+            await NotificationService.sendNotification(
+              trip.user_fcm_token,
+              title,
+              body,
+              { type: isWakeup ? 'WAKEUP_CALL' : 'SCHEDULED_REMINDER', trip_id: String(trip.trip_id) }
+            );
+          }
+
+          if (isWakeup && trip.user_phone) {
+            const { TwilioService } = require('../notifications/twilio.service');
+            await TwilioService.placeWakeupCall(trip.user_phone, `This is a wakeup call from vDrive. Your scheduled ride starts in 45 minutes at ${trip.pickup_address}`);
+          }
+
+          logger.info(`Successfully sent ${reminderKey} reminder for trip ${trip.trip_id} to user ${trip.user_id}`);
+
+          await query(
+            `UPDATE trips SET user_reminders_sent = COALESCE(user_reminders_sent, '{}'::jsonb) || '{"${reminderKey}": true}'::jsonb WHERE trip_id = $1`,
+            [trip.trip_id]
+          );
+        }
+      }
     } catch (error: any) {
       logger.error(`Error in processScheduledRides: ${error.message}`);
     }
@@ -253,27 +314,27 @@ export const TripSchedulerService = {
 
       for (const trip of result.rows) {
         logger.info(`Auto-cancelled scheduled trip ${trip.trip_id} as start time + grace period passed without driver assignment.`);
-        
+
         // Notify User
         const userQuery = await query('SELECT fcm_token FROM users WHERE id = $1', [trip.user_id]);
         if (userQuery.rows.length > 0 && userQuery.rows[0].fcm_token) {
-           await NotificationService.sendNotification(
-             userQuery.rows[0].fcm_token,
-             'Ride Cancelled',
-             'Your scheduled ride was automatically cancelled as no driver was available.',
-             { type: 'TRIP_CANCELLED', trip_id: String(trip.trip_id) }
-           );
+          await NotificationService.sendNotification(
+            userQuery.rows[0].fcm_token,
+            'Ride Cancelled',
+            'Your scheduled ride was automatically cancelled as no driver was available.',
+            { type: 'TRIP_CANCELLED', trip_id: String(trip.trip_id) }
+          );
         }
-        
+
         // Emit Socket event
         const { emitToRoom } = require('../../sockets/socket');
         emitToRoom(`user_${trip.user_id}`, 'TRIP_CANCELLED', { trip_id: trip.trip_id, reason: 'NO_DRIVER_AVAILABLE' });
 
         // Insert into TripChanges for history
         await query(
-            `INSERT INTO trip_changes (trip_id, change_type, change_by, old_value, new_value, notes, created_at)
+          `INSERT INTO trip_changes (trip_id, change_type, change_by, old_value, new_value, notes, created_at)
              VALUES ($1, 'CANCELLED', 'SYSTEM', 'REQUESTED', 'CANCELLED', 'Auto cancelled: start time + 10 mins passed without driver', NOW())`,
-            [trip.trip_id]
+          [trip.trip_id]
         );
       }
     } catch (error: any) {

@@ -75,6 +75,8 @@ export interface Trip {
   created_at?: Date;
   updated_at?: Date;
   rejected_drivers?: string[];
+  reminders_sent?: any;
+  user_reminders_sent?: any;
   [key: string]: unknown;
 }
 
