@@ -225,8 +225,25 @@ export const TripService = {
         await DriverNotifications.newRideRequest(
           driverToken,
           String(tripData.id),
-          tripData.pickup_address,
-          tripData.drop_address
+          tripData.pickup_address || 'Pickup Location',
+          tripData.drop_address || 'Drop Location',
+          {
+            fare: String(tripData.total_fare || tripData.fare || '0'),
+            passengerName: String(tripData.passenger_name || tripData.user_name || 'Passenger'),
+            ride_type: String(tripData.ride_type || ''),
+            booking_type: String(tripData.booking_type || ''),
+            scheduled_start_time: String(tripData.scheduled_start_time || ''),
+            otp: String(tripData.otp || ''),
+            createdAt: new Date().toISOString(),
+            pickup_lat: String(tripData.pickup_lat || ''),
+            pickup_lng: String(tripData.pickup_lng || ''),
+            drop_lat: String(tripData.drop_lat || ''),
+            drop_lng: String(tripData.drop_lng || ''),
+            distanceToUser: String(tripData.distanceToUser || '0'),
+            eta: String(tripData.eta || '1'),
+            remaining: '20',
+            tripId: String(tripData.id)
+          }
         );
       }
     } catch (err: any) {
@@ -424,14 +441,24 @@ export const TripService = {
           DriverNotifications.newRideRequest(
             driver.fcm_token,
             String(tripId),
-            tripData[0].pickup_address,
-            tripData[0].drop_address,
+            tripData[0].pickup_address || 'Pickup Location',
+            tripData[0].drop_address || 'Drop Location',
             {
               fare: String(tripData[0].total_fare),
               passengerName: passengerDetails?.name || tripData[0].passenger_name || 'Passenger',
+              ride_type: String(tripData[0].ride_type || ''),
+              booking_type: String(tripData[0].booking_type || ''),
+              scheduled_start_time: String(tripData[0].scheduled_start_time || ''),
+              otp: String(tripData[0].otp || ''),
               createdAt: payload.createdAt,
               pickup_lat: String(tripData[0].pickup_lat),
               pickup_lng: String(tripData[0].pickup_lng),
+              drop_lat: String(tripData[0].drop_lat),
+              drop_lng: String(tripData[0].drop_lng),
+              distanceToUser: String(driver.distance_meters || '0'),
+              eta: String(driver.eta || '1'),
+              remaining: '20',
+              tripId: String(tripId)
             }
           ).catch((err) =>
             logger.error(`FCM Broadcast Error for driver ${driver.id}: ${err.message}`)
@@ -916,9 +943,9 @@ export const TripService = {
     if (trip.driver_id) {
       // Recalculate average rating for the driver
       const driverTrips = await TripRepository.findByDriverId(trip.driver_id);
-      const ratedTrips = driverTrips.filter((t: any) => t.driver_rating && t.driver_rating > 0);
+      const ratedTrips = driverTrips.filter((t: any) => t.driver_rating && Number(t.driver_rating) > 0);
       if (ratedTrips.length > 0) {
-        const totalRating = ratedTrips.reduce((sum: number, t: any) => sum + t.driver_rating, 0);
+        const totalRating = ratedTrips.reduce((sum: number, t: any) => sum + Number(t.driver_rating), 0);
         const averageRating = parseFloat((totalRating / ratedTrips.length).toFixed(2));
         
         await DriverRepository.update(trip.driver_id, {

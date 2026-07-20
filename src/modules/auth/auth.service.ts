@@ -476,6 +476,31 @@ export const AuthService = {
       const accessToken = tokens.accessToken;
       const refreshToken = tokens.refreshToken;
 
+      // Welcome back notification for returning driver (> 7 days inactive)
+      if (role === 'driver' && isExistingUser && fcm_token) {
+        try {
+          const lastSessionResult = await query(
+            `SELECT last_active FROM user_sessions WHERE user_id = $1 ORDER BY last_active DESC LIMIT 1`,
+            [userId]
+          );
+          if (lastSessionResult.rows.length > 0) {
+            const lastActive = new Date(lastSessionResult.rows[0].last_active);
+            const daysSinceLastActive = (Date.now() - lastActive.getTime()) / (1000 * 60 * 60 * 24);
+            if (daysSinceLastActive > 7) {
+               const { notificationService } = require('../../services/notificationService');
+               notificationService.sendNotification(
+                 fcm_token,
+                 'Welcome Back! 👋',
+                 "We missed you! Let's get driving and earning today.",
+                 { type: 'welcome_back' }
+               ).catch((err: any) => logger.error(`Failed to send Welcome Back login notification: ${err.message}`));
+            }
+          }
+        } catch (error: any) {
+          logger.error(`Error checking last active for welcome back: ${error.message}`);
+        }
+      }
+
       // ✅ Always update device_id in users table
       await AuthRepository.userDeviceIDUpdate(userId, device_id, role, fcm_token);
       logger.info(`Device ID "${device_id}" updated for User ID "${userId}"`);

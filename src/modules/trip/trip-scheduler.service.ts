@@ -136,12 +136,17 @@ export const TripSchedulerService = {
 
       if (result.rows.length === 0) return;
 
-      // 2. Fetch UNIQUE fcm_tokens for drivers with active status and subscription (Online & Offline)
+      // Fetch UNIQUE fcm_tokens for drivers with active status and subscription (Online & Offline)
+      // Only include those who completed all processes and do NOT have a 'daily' subscription plan.
       const eligibleDrivers = await query(
-        `SELECT DISTINCT fcm_token FROM drivers 
-                 WHERE status = 'active'
-                 AND onboarding_status = 'SUBSCRIPTION_ACTIVE'
-                 AND fcm_token IS NOT NULL`
+        `SELECT DISTINCT d.fcm_token 
+         FROM drivers d
+         JOIN driver_subscriptions ds ON d.id = ds.driver_id
+         WHERE d.status = 'active'
+           AND d.onboarding_status = 'SUBSCRIPTION_ACTIVE'
+           AND ds.status = 'active'
+           AND ds.billing_cycle != 'day'
+           AND d.fcm_token IS NOT NULL`
       );
 
       for (const trip of result.rows) {
@@ -190,11 +195,16 @@ export const TripSchedulerService = {
   async broadcastNewScheduledRide(trip: any, io?: any) {
     try {
       // Fetch UNIQUE fcm_tokens for drivers with active status and subscription (Online & Offline)
+      // Only include those who completed all processes and do NOT have a 'daily' subscription plan.
       const eligibleDrivers = await query(
-        `SELECT DISTINCT fcm_token FROM drivers 
-                 WHERE status = 'active'
-                 AND onboarding_status = 'SUBSCRIPTION_ACTIVE'
-                 AND fcm_token IS NOT NULL`
+        `SELECT DISTINCT d.fcm_token 
+         FROM drivers d
+         JOIN driver_subscriptions ds ON d.id = ds.driver_id
+         WHERE d.status = 'active'
+           AND d.onboarding_status = 'SUBSCRIPTION_ACTIVE'
+           AND ds.status = 'active'
+           AND ds.billing_cycle != 'day'
+           AND d.fcm_token IS NOT NULL`
       );
 
       const startTimeStr =

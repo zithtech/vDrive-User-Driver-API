@@ -610,7 +610,16 @@ export const DriverRepository = {
         : undefined,
       created_at: driver.created_at,
       updated_at: driver.updated_at,
-      performance: safeParse(driver.performance),
+      performance: (() => {
+        const perf = safeParse(driver.performance) || {};
+        return {
+          ...perf,
+          averageRating: perf.averageRating !== undefined ? perf.averageRating : (parseFloat(driver.rating) || 0),
+          totalTrips: perf.totalTrips !== undefined ? perf.totalTrips : (driver.total_trips || 0),
+          cancellations: perf.cancellations || 0,
+          lastActive: perf.lastActive || null,
+        };
+      })(),
       payments: safeParse(driver.payments),
       is_trip_verified: driver.is_trip_verified,
       language: driver.language || 'en',

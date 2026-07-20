@@ -337,6 +337,23 @@ export const DriverService = {
       throw { statusCode: 404, message: 'Driver not found' };
     }
 
+    // Check previous online session to see if driver was inactive for > 7 days
+    const lastSessionResult = await query(
+      `SELECT went_offline_at, went_online_at FROM driver_online_sessions 
+       WHERE driver_id = $1 ORDER BY went_online_at DESC LIMIT 1`,
+      [driverId]
+    );
+
+    let isWelcomeBack = false;
+    if (lastSessionResult.rows.length > 0) {
+      const lastSession = lastSessionResult.rows[0];
+      const lastActivityDate = lastSession.went_offline_at || lastSession.went_online_at;
+      const daysSinceLastActive = (Date.now() - new Date(lastActivityDate).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSinceLastActive > 7) {
+        isWelcomeBack = true;
+      }
+    }
+
     // Close any stale open sessions (safety net for app crashes / missed goOffline)
     await query(
       `UPDATE driver_online_sessions 
@@ -381,6 +398,17 @@ export const DriverService = {
        ORDER BY scheduled_start_time ASC`,
       [driverId]
     );
+
+    if (isWelcomeBack && driver.fcm_token) {
+      notificationService.sendPushNotification(
+        driver.fcm_token,
+        {
+          title: 'Welcome Back! 👋',
+          body: 'We missed you! Wishing you a great day of trips and earnings today.',
+          data: { type: 'welcome_back' }
+        }
+      ).catch((err: any) => logger.error(`Failed to send Welcome Back notification to ${driverId}: ${err.message}`));
+    }
 
     return {
       success: true,
