@@ -47,6 +47,7 @@ async function createNewUser(
     date_of_birth: null,
     gender: null,
     referred_by: referred_by || null,
+    otp: generateOTP(),
   };
 
   if (role === 'driver') {
