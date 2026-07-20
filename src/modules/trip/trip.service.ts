@@ -172,10 +172,10 @@ export const TripService = {
     if (data.user_rating !== undefined && trip.user_id) {
       const userTripsObj = await TripRepository.findByUserId(trip.user_id, 'customer');
       const userTrips = userTripsObj.data;
-      const ratedTrips = userTrips.filter((t: any) => t.user_rating && t.user_rating > 0);
+      const ratedTrips = userTrips.filter((t: any) => t.user_rating && Number(t.user_rating) > 0);
 
       if (ratedTrips.length > 0) {
-        const totalRating = ratedTrips.reduce((sum: number, t: any) => sum + t.user_rating, 0);
+        const totalRating = ratedTrips.reduce((sum: number, t: any) => sum + Number(t.user_rating), 0);
         const averageRating = parseFloat((totalRating / ratedTrips.length).toFixed(2));
         await UserRepository.updateUser(trip.user_id, '"rating" = $1', [averageRating]);
       }
@@ -1011,10 +1011,10 @@ export const TripService = {
       // Recalculate average user rating
       const userTripsObj = await TripRepository.findByUserId(userId, 'customer');
       const userTrips = userTripsObj.data;
-      const ratedTrips = userTrips.filter((t: any) => t.user_rating && t.user_rating > 0);
+      const ratedTrips = userTrips.filter((t: any) => t.user_rating && Number(t.user_rating) > 0);
 
       if (ratedTrips.length > 0) {
-        const totalRating = ratedTrips.reduce((sum: number, t: any) => sum + t.user_rating, 0);
+        const totalRating = ratedTrips.reduce((sum: number, t: any) => sum + Number(t.user_rating), 0);
         const averageRating = parseFloat((totalRating / ratedTrips.length).toFixed(2));
 
         await UserRepository.updateUser(userId, '"rating" = $1', [averageRating]);

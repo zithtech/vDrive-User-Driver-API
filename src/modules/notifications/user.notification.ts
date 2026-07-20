@@ -9,6 +9,14 @@ export const UserNotifications = {
       body: 'Your account was accessed from another device.',
       androidChannelId: 'default',
     }),
+  chatMessage: (fcmToken: string, text: string, rideId: string, senderName: string) =>
+    sendToDevice(fcmToken, {
+      type: 'CHAT_MESSAGE',
+      title: `New message from ${senderName}`,
+      body: text,
+      data: { rideId, trip_id: rideId, senderName },
+      androidChannelId: 'default',
+    }),
   otpSent: (fcmToken: string, otp: string) =>
     sendToDevice(fcmToken, {
       type: UserNotificationType.OTP_SENT,

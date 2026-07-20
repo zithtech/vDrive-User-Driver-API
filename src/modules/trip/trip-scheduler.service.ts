@@ -18,8 +18,8 @@ export const TripSchedulerService = {
          JOIN drivers d ON t.driver_id = d.id
          WHERE t.booking_type = 'SCHEDULED' 
          AND t.trip_status = 'ACCEPTED'
-         AND t.scheduled_start_time > $1
-         AND t.scheduled_start_time < $1 + INTERVAL '35 minutes'`,
+         AND t.scheduled_start_time > $1 - INTERVAL '5 minutes'
+         AND t.scheduled_start_time < $1 + INTERVAL '65 minutes'`,
         [now]
       );
 
@@ -27,6 +27,45 @@ export const TripSchedulerService = {
         const startTime = new Date(trip.scheduled_start_time);
         const diffMinutes = Math.floor((startTime.getTime() - now.getTime()) / 60000);
 
+        // a. 1-hour reminder (even if offline, so they know to come online)
+        if (diffMinutes >= 58 && diffMinutes <= 62 && !trip.reminders_sent?.one_hour) {
+          const messageId = await NotificationService.sendNotificationToDriver(
+            trip.driver_id,
+            'Upcoming Trip Reminder',
+            `You have a scheduled trip starting in 1 hour at ${trip.pickup_address}. Please ensure you are online soon.`,
+            { type: 'SCHEDULED_REMINDER', trip_id: String(trip.trip_id) }
+          );
+
+          if (messageId) {
+            logger.info(`Successfully sent 1-hour reminder for trip ${trip.trip_id} to driver ${trip.driver_id}`);
+            const { emitToRoom } = require('../../sockets/socket');
+            emitToRoom(`driver_${trip.driver_id}`, 'SCHEDULED_REMINDER', { trip_id: trip.trip_id });
+            await query(
+              'UPDATE trips SET reminders_sent = COALESCE(reminders_sent, \'{}\'::jsonb) || \'{"one_hour": true}\'::jsonb WHERE trip_id = $1',
+              [trip.trip_id]
+            );
+          }
+        }
+
+        // b. Start time notification
+        if (diffMinutes >= -2 && diffMinutes <= 2 && !trip.reminders_sent?.start_time) {
+          const messageId = await NotificationService.sendNotificationToDriver(
+            trip.driver_id,
+            'Scheduled Ride is Starting Now',
+            `Your scheduled trip at ${trip.pickup_address} is starting now.`,
+            { type: 'SCHEDULED_RIDE_STARTED', trip_id: String(trip.trip_id) }
+          );
+
+          if (messageId) {
+            logger.info(`Successfully sent start-time reminder for trip ${trip.trip_id} to driver ${trip.driver_id}`);
+            const { emitToRoom } = require('../../sockets/socket');
+            emitToRoom(`driver_${trip.driver_id}`, 'SCHEDULED_RIDE_STARTED', { trip_id: trip.trip_id });
+            await query(
+              'UPDATE trips SET reminders_sent = COALESCE(reminders_sent, \'{}\'::jsonb) || \'{"start_time": true}\'::jsonb WHERE trip_id = $1',
+              [trip.trip_id]
+            );
+          }
+        }
         // a. 30-minute reminder
         if (diffMinutes >= 28 && diffMinutes <= 32 && !trip.reminders_sent?.thirty_min) {
           if (trip.driver_status === 'ONLINE') {
@@ -279,7 +318,7 @@ export const TripSchedulerService = {
           'New Scheduled Ride Available',
           `A new scheduled ride is available for ${startTimeStr}. Pickup: ${trip.pickup_address}`,
           {
-            type: 'ride_request',
+            type: 'SCHEDULED_RIDE_CREATED',
             trip_id: String(trip.trip_id || ''),
             pickup_address: String(trip.pickup_address || ''),
             drop_address: String(trip.drop_address || ''),

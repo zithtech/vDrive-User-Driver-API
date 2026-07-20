@@ -10,6 +10,15 @@ export const DriverNotifications = {
       androidChannelId: 'ride_requests',
     }),
 
+  chatMessage: (fcmToken: string, text: string, rideId: string, senderName: string) =>
+    sendToDevice(fcmToken, {
+      type: 'CHAT_MESSAGE',
+      title: `New message from ${senderName}`,
+      body: text,
+      data: { rideId, trip_id: rideId, senderName },
+      androidChannelId: 'v-drive-alerts', // Use standard alerts channel
+    }),
+
   newRideRequest: (
     fcmToken: string,
     bookingId: string,

@@ -20,6 +20,12 @@ const RIDE_NOTIFICATION_TYPES = new Set([
   'ride_request',
   'RIDE_CANCELLED',
   'BOOKING_CANCELLED',
+  'CHAT_MESSAGE',
+  'SUPPORT_REPLY',
+  'USER_SUPPORT_REPLY',
+  'SCHEDULED_RIDE_CREATED',
+  'SCHEDULED_REMINDER',
+  'SCHEDULED_RIDE_STARTED',
 ]);
 
 // ─── Initialize Firebase Admin ────────────────────────────────────────────────
