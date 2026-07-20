@@ -152,6 +152,11 @@ export const TripService = {
 
   async updateTrip(id: string, data: Partial<Trip>) {
     const previousSnapshot = await TripRepository.findById(id);
+
+    if (data.scheduled_start_time) {
+      data.user_reminders_sent = null;
+    }
+
     const fields = Object.keys(data);
     if (fields.length === 0) return null;
     const setQuery = fields.map((field, index) => `"${field}" = $${index + 1}`).join(', ');
@@ -162,6 +167,31 @@ export const TripService = {
     if (!trip) {
       throw { statusCode: 500, message: 'Update trip failed' };
     }
+
+    // --- RECALCULATE RATINGS IF APPLICABLE ---
+    if (data.user_rating !== undefined && trip.user_id) {
+      const userTripsObj = await TripRepository.findByUserId(trip.user_id, 'customer');
+      const userTrips = userTripsObj.data;
+      const ratedTrips = userTrips.filter((t: any) => t.user_rating && t.user_rating > 0);
+
+      if (ratedTrips.length > 0) {
+        const totalRating = ratedTrips.reduce((sum: number, t: any) => sum + t.user_rating, 0);
+        const averageRating = parseFloat((totalRating / ratedTrips.length).toFixed(2));
+        await UserRepository.updateUser(trip.user_id, '"rating" = $1', [averageRating]);
+      }
+    }
+
+    // if (data.driver_rating !== undefined && trip.driver_id) {
+    //   const driverTrips = await TripRepository.findByDriverId(trip.driver_id);
+    //   const ratedTrips = driverTrips.filter((t: any) => t.driver_rating && t.driver_rating > 0);
+
+    //   if (ratedTrips.length > 0) {
+    //     const totalRating = ratedTrips.reduce((sum: number, t: any) => sum + t.driver_rating, 0);
+    //     const averageRating = parseFloat((totalRating / ratedTrips.length).toFixed(2));
+    //     await DriverRepository.update(trip.driver_id, { rating: averageRating });
+    //   }
+    // }
+
     // ── 3. Resolve actor from context ─────────────────────────────────────────
     const actor_type =
       data.cancel_by === 'USER'
@@ -947,7 +977,7 @@ export const TripService = {
       if (ratedTrips.length > 0) {
         const totalRating = ratedTrips.reduce((sum: number, t: any) => sum + Number(t.driver_rating), 0);
         const averageRating = parseFloat((totalRating / ratedTrips.length).toFixed(2));
-        
+
         await DriverRepository.update(trip.driver_id, {
           rating: averageRating,
         });
@@ -977,6 +1007,18 @@ export const TripService = {
     if (userId) {
       // 📈 Update persistent statistics in the users table
       await UserRepository.incrementStats(userId);
+
+      // Recalculate average user rating
+      const userTripsObj = await TripRepository.findByUserId(userId, 'customer');
+      const userTrips = userTripsObj.data;
+      const ratedTrips = userTrips.filter((t: any) => t.user_rating && t.user_rating > 0);
+
+      if (ratedTrips.length > 0) {
+        const totalRating = ratedTrips.reduce((sum: number, t: any) => sum + t.user_rating, 0);
+        const averageRating = parseFloat((totalRating / ratedTrips.length).toFixed(2));
+
+        await UserRepository.updateUser(userId, '"rating" = $1', [averageRating]);
+      }
     }
 
     if (driverId) {
