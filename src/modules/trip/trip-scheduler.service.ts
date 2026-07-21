@@ -18,8 +18,8 @@ export const TripSchedulerService = {
          JOIN drivers d ON t.driver_id = d.id
          WHERE t.booking_type = 'SCHEDULED' 
          AND t.trip_status = 'ACCEPTED'
-         AND t.scheduled_start_time > $1
-         AND t.scheduled_start_time < $1 + INTERVAL '35 minutes'`,
+         AND t.scheduled_start_time > $1::timestamp - INTERVAL '5 minutes'
+         AND t.scheduled_start_time < $1::timestamp + INTERVAL '65 minutes'`,
         [now]
       );
 
@@ -27,6 +27,45 @@ export const TripSchedulerService = {
         const startTime = new Date(trip.scheduled_start_time);
         const diffMinutes = Math.floor((startTime.getTime() - now.getTime()) / 60000);
 
+        // a. 1-hour reminder (even if offline, so they know to come online)
+        if (diffMinutes >= 58 && diffMinutes <= 62 && !trip.reminders_sent?.one_hour) {
+          const messageId = await NotificationService.sendNotificationToDriver(
+            trip.driver_id,
+            'Upcoming Trip Reminder',
+            `You have a scheduled trip starting in 1 hour at ${trip.pickup_address}. Please ensure you are online soon.`,
+            { type: 'SCHEDULED_REMINDER', trip_id: String(trip.trip_id) }
+          );
+
+          if (messageId) {
+            logger.info(`Successfully sent 1-hour reminder for trip ${trip.trip_id} to driver ${trip.driver_id}`);
+            const { emitToRoom } = require('../../sockets/socket');
+            emitToRoom(`driver_${trip.driver_id}`, 'SCHEDULED_REMINDER', { trip_id: trip.trip_id });
+            await query(
+              'UPDATE trips SET reminders_sent = COALESCE(reminders_sent, \'{}\'::jsonb) || \'{"one_hour": true}\'::jsonb WHERE trip_id = $1',
+              [trip.trip_id]
+            );
+          }
+        }
+
+        // b. Start time notification
+        if (diffMinutes >= -2 && diffMinutes <= 2 && !trip.reminders_sent?.start_time) {
+          const messageId = await NotificationService.sendNotificationToDriver(
+            trip.driver_id,
+            'Scheduled Ride is Starting Now',
+            `Your scheduled trip at ${trip.pickup_address} is starting now.`,
+            { type: 'SCHEDULED_RIDE_STARTED', trip_id: String(trip.trip_id) }
+          );
+
+          if (messageId) {
+            logger.info(`Successfully sent start-time reminder for trip ${trip.trip_id} to driver ${trip.driver_id}`);
+            const { emitToRoom } = require('../../sockets/socket');
+            emitToRoom(`driver_${trip.driver_id}`, 'SCHEDULED_RIDE_STARTED', { trip_id: trip.trip_id });
+            await query(
+              'UPDATE trips SET reminders_sent = COALESCE(reminders_sent, \'{}\'::jsonb) || \'{"start_time": true}\'::jsonb WHERE trip_id = $1',
+              [trip.trip_id]
+            );
+          }
+        }
         // a. 30-minute reminder
         if (diffMinutes >= 28 && diffMinutes <= 32 && !trip.reminders_sent?.thirty_min) {
           if (trip.driver_status === 'ONLINE') {
@@ -117,8 +156,8 @@ export const TripSchedulerService = {
          JOIN users u ON t.user_id = u.id
          WHERE t.booking_type = 'SCHEDULED' 
          AND t.trip_status IN ('REQUESTED', 'ACCEPTED')
-         AND t.scheduled_start_time > $1
-         AND t.scheduled_start_time < $1 + INTERVAL '125 minutes'`,
+         AND t.scheduled_start_time > $1::timestamp
+         AND t.scheduled_start_time < $1::timestamp + INTERVAL '125 minutes'`,
         [now]
       );
 
@@ -189,20 +228,25 @@ export const TripSchedulerService = {
                  LEFT JOIN users u ON t.user_id = u.id
                  WHERE t.booking_type = 'SCHEDULED' 
                  AND t.trip_status = 'REQUESTED'
-                 AND t.scheduled_start_time > $1
-                 AND t.scheduled_start_time < $1 + INTERVAL '20 minutes'
-                 AND (t.last_broadcast_at IS NULL OR t.last_broadcast_at < $1 - INTERVAL '10 minutes')`,
+                 AND t.scheduled_start_time > $1::timestamp
+                 AND t.scheduled_start_time < $1::timestamp + INTERVAL '20 minutes'
+                 AND (t.last_broadcast_at IS NULL OR t.last_broadcast_at < $1::timestamp - INTERVAL '10 minutes')`,
         [now]
       );
 
       if (result.rows.length === 0) return;
 
-      // 2. Fetch UNIQUE fcm_tokens for drivers with active status and subscription (Online & Offline)
+      // Fetch UNIQUE fcm_tokens for drivers with active status and subscription (Online & Offline)
+      // Only include those who completed all processes and do NOT have a 'daily' subscription plan.
       const eligibleDrivers = await query(
-        `SELECT DISTINCT fcm_token FROM drivers 
-                 WHERE status = 'active'
-                 AND onboarding_status = 'SUBSCRIPTION_ACTIVE'
-                 AND fcm_token IS NOT NULL`
+        `SELECT DISTINCT d.fcm_token 
+         FROM drivers d
+         JOIN driver_subscriptions ds ON d.id = ds.driver_id
+         WHERE d.status = 'active'
+           AND d.onboarding_status = 'SUBSCRIPTION_ACTIVE'
+           AND ds.status = 'active'
+           AND ds.billing_cycle != 'day'
+           AND d.fcm_token IS NOT NULL`
       );
 
       for (const trip of result.rows) {
@@ -251,11 +295,16 @@ export const TripSchedulerService = {
   async broadcastNewScheduledRide(trip: any, io?: any) {
     try {
       // Fetch UNIQUE fcm_tokens for drivers with active status and subscription (Online & Offline)
+      // Only include those who completed all processes and do NOT have a 'daily' subscription plan.
       const eligibleDrivers = await query(
-        `SELECT DISTINCT fcm_token FROM drivers 
-                 WHERE status = 'active'
-                 AND onboarding_status = 'SUBSCRIPTION_ACTIVE'
-                 AND fcm_token IS NOT NULL`
+        `SELECT DISTINCT d.fcm_token 
+         FROM drivers d
+         JOIN driver_subscriptions ds ON d.id = ds.driver_id
+         WHERE d.status = 'active'
+           AND d.onboarding_status = 'SUBSCRIPTION_ACTIVE'
+           AND ds.status = 'active'
+           AND ds.billing_cycle != 'day'
+           AND d.fcm_token IS NOT NULL`
       );
 
       const startTimeStr =
@@ -269,7 +318,7 @@ export const TripSchedulerService = {
           'New Scheduled Ride Available',
           `A new scheduled ride is available for ${startTimeStr}. Pickup: ${trip.pickup_address}`,
           {
-            type: 'ride_request',
+            type: 'SCHEDULED_RIDE_CREATED',
             trip_id: String(trip.trip_id || ''),
             pickup_address: String(trip.pickup_address || ''),
             drop_address: String(trip.drop_address || ''),

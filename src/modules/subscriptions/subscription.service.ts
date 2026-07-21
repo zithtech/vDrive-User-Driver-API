@@ -8,6 +8,7 @@ import { query, getClient } from '../../shared/database';
 import axios from 'axios';
 import config from '../../config';
 import { logger } from '../../shared/logger';
+import { DriverNotifications } from '../notifications/driver.notification';
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID as string,
@@ -169,6 +170,16 @@ export const SubscriptionService = {
           `Applied towards ${payment.billing_cycle} plan recharge`,
           client
         );
+        
+        // Notify driver of wallet deduction
+        const driverRes = await client.query('SELECT fcm_token, credit_balance FROM drivers WHERE id = $1', [driverId]);
+        if (driverRes.rows[0]?.fcm_token) {
+           await DriverNotifications.walletDebited(
+               driverRes.rows[0].fcm_token,
+               (payment.reward_amount_used || 0).toString(),
+               driverRes.rows[0].credit_balance.toString()
+           ).catch(err => logger.error(`Push error: ${err.message}`));
+        }
       }
 
       // Check if driver already had an active subscription to mark this as a renewal
@@ -212,7 +223,7 @@ export const SubscriptionService = {
 
       // Trigger webhook asynchronously for Admin App real-time notifications
       try {
-        const driverRes = await client.query('SELECT full_name FROM drivers WHERE id = $1', [
+        const driverRes = await client.query('SELECT full_name, fcm_token FROM drivers WHERE id = $1', [
           driverId,
         ]);
         const planRes = await client.query('SELECT plan_name FROM recharge_plans WHERE id = $1', [
@@ -223,6 +234,13 @@ export const SubscriptionService = {
         const planName = planRes.rows[0]?.plan_name || 'a subscription plan';
 
         const actionText = isRenewal ? 'renewed' : 'activated';
+
+        // Notify Driver via Push
+        const fcmToken = driverRes.rows[0]?.fcm_token;
+        if (fcmToken) {
+           DriverNotifications.subscriptionActivated(fcmToken, planName, isRenewal)
+             .catch(err => logger.error(`Failed to send subscription push: ${err.message}`));
+        }
 
         const webhookUrl = `${config.adminBackendUrl}/api/webhooks/driver-events`;
         axios
@@ -267,5 +285,21 @@ export const SubscriptionService = {
 
   async getAllActiveSubscriptions() {
     return await SubscriptionRepository.getAllActiveSubscriptions();
+  },
+
+  async sendExpiryWarnings() {
+    logger.info('Fetching subscriptions expiring in the next 24-48 hours...');
+    const expiringSubs = await SubscriptionRepository.getExpiringSubscriptions(24, 48);
+    
+    let sentCount = 0;
+    for (const sub of expiringSubs) {
+      if (sub.fcm_token) {
+        await DriverNotifications.subscriptionExpiringSoon(sub.fcm_token, sub.plan_name)
+          .catch(err => logger.error(`Failed to send expiry warning to driver ${sub.driver_id}: ${err.message}`));
+        sentCount++;
+      }
+    }
+    
+    logger.info(`Successfully sent ${sentCount} subscription expiry warnings.`);
   },
 };

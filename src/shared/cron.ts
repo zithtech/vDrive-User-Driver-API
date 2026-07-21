@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { SubscriptionRepository } from '../modules/subscriptions/subscription.repository';
+import { SubscriptionService } from '../modules/subscriptions/subscription.service';
 import { TripSchedulerService } from '../modules/trip/trip-scheduler.service';
 import { acquireLock, releaseLock } from './redis';
 import { notifyAdmin } from './eventBus';
@@ -19,6 +20,9 @@ export const initCronJobs = () => {
     try {
       const expiredCount = await SubscriptionRepository.expireReachedSubscriptions();
       logger.info(`Successfully expired ${expiredCount} subscriptions.`);
+      
+      // Also send out expiry warnings for tomorrow
+      await SubscriptionService.sendExpiryWarnings();
     } catch (error) {
       logger.error('Error running subscription expiration job:', error);
     } finally {

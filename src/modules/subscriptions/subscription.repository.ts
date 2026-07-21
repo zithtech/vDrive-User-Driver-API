@@ -158,4 +158,19 @@ export const SubscriptionRepository = {
     );
     return (result.rowCount ?? 0) > 0;
   },
+
+  async getExpiringSubscriptions(hoursStart: number = 24, hoursEnd: number = 48): Promise<any[]> {
+    const result = await query(
+      `SELECT ds.driver_id, d.fcm_token, rp.plan_name, ds.expiry_date
+       FROM driver_subscriptions ds
+       JOIN drivers d ON ds.driver_id = d.id
+       JOIN recharge_plans rp ON ds.plan_id = rp.id
+       WHERE ds.status = 'active' 
+         AND ds.expiry_date > (NOW() + interval '1 hour' * $1)
+         AND ds.expiry_date <= (NOW() + interval '1 hour' * $2)
+         AND d.fcm_token IS NOT NULL`,
+       [hoursStart, hoursEnd]
+    );
+    return result.rows || [];
+  },
 };

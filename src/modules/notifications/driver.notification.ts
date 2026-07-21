@@ -10,6 +10,15 @@ export const DriverNotifications = {
       androidChannelId: 'ride_requests',
     }),
 
+  chatMessage: (fcmToken: string, text: string, rideId: string, senderName: string) =>
+    sendToDevice(fcmToken, {
+      type: 'CHAT_MESSAGE',
+      title: `New message from ${senderName}`,
+      body: text,
+      data: { rideId, trip_id: rideId, senderName },
+      androidChannelId: 'v-drive-alerts', // Use standard alerts channel
+    }),
+
   newRideRequest: (
     fcmToken: string,
     bookingId: string,
@@ -131,6 +140,25 @@ export const DriverNotifications = {
       data: { amount, balance },
       androidChannelId: 'ride_requests',
     }),
+
+  subscriptionActivated: (fcmToken: string, planName: string, isRenewal: boolean) =>
+    sendToDevice(fcmToken, {
+      type: DriverNotificationType.SUBSCRIPTION_ACTIVATED,
+      title: isRenewal ? 'Subscription Renewed ✅' : 'Subscription Activated ✅',
+      body: `Your ${planName} is now active. Let's get driving!`,
+      data: { planName },
+      androidChannelId: 'ride_requests',
+    }),
+
+  subscriptionExpiringSoon: (fcmToken: string, planName: string) =>
+    sendToDevice(fcmToken, {
+      type: DriverNotificationType.SUBSCRIPTION_EXPIRING,
+      title: 'Subscription Expiring Soon ⚠️',
+      body: `Your ${planName} expires tomorrow. Recharge now to continue receiving rides!`,
+      data: { planName },
+      androidChannelId: 'ride_requests',
+    }),
+
 
   sosResolved: (fcmToken: string, sosId: string) =>
     sendToDevice(fcmToken, {

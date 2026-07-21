@@ -266,7 +266,7 @@ export const DriverController = {
       const onlineHours = await DriverService.getOnlineHours(driverId);
 
       const performance = {
-        rating: driver.rating || 4.8,
+        rating: driver.performance?.averageRating ?? (driver.rating !== undefined && driver.rating !== null ? driver.rating : 4.8),
         acceptanceRate: 98,
         cancellationRate:
           stats.cancelled_trips > 0 ? (stats.cancelled_trips / stats.total_trips) * 100 : 2,

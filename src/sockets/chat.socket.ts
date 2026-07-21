@@ -1,6 +1,10 @@
 import { Server, Socket } from 'socket.io';
 import { query } from '../shared/database';
 import { logger } from '../shared/logger';
+import { DriverRepository } from '../modules/drivers/driver.repository';
+import { UserRepository } from '../modules/users/user.repository';
+import { DriverNotifications } from '../modules/notifications/driver.notification';
+import { UserNotifications } from '../modules/notifications/user.notification';
 
 interface ChatMessage {
   messageId: string;
@@ -77,6 +81,32 @@ export default function registerChatSocket(io: Server, socket: Socket) {
 
     // Emit message to all except sender first
     socket.to(room).emit('receiveChatMessage', msg);
+
+    // Send push notification to the recipient
+    try {
+      const { rows } = await query(`SELECT user_id, driver_id FROM trips WHERE trip_id = $1 OR id = $1`, [msg.rideId]);
+      if (rows.length > 0) {
+        const trip = rows[0];
+        const senderName = 'New Message'; // Optional: could fetch real name from DB if needed
+
+        // If sender is user, notify driver
+        if (msg.senderId === trip.user_id && trip.driver_id) {
+          const fcmToken = await DriverRepository.getFcmTokenById(trip.driver_id);
+          if (fcmToken) {
+            await DriverNotifications.chatMessage(fcmToken, msg.text || '📸 Image', msg.rideId, senderName);
+          }
+        } 
+        // If sender is driver, notify user
+        else if (msg.senderId === trip.driver_id && trip.user_id) {
+          const fcmToken = await UserRepository.getFcmTokenById(trip.user_id);
+          if (fcmToken) {
+            await UserNotifications.chatMessage(fcmToken, msg.text || '📸 Image', msg.rideId, senderName);
+          }
+        }
+      }
+    } catch (err) {
+      logger.error(`Failed to send chat push notification: ${err}`);
+    }
 
     // Acknowledge “delivered” to sender
     socket.emit('messageDelivered', {
