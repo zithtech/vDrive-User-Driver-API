@@ -45,4 +45,5 @@ export interface TripEventPayload {
   };
   message?: string;
   timestamp?: string;
+  passengerName?: string;
 }

@@ -811,8 +811,18 @@ export const TripService = {
     }
 
     // ─── 8. SEND NOTIFICATIONS ──────────────────────────────────────
+    let passengerName = '';
     try {
       const userfcmtoken = trip.user_id ? await UserRepository.getFcmTokenById(trip.user_id) : null;
+      if (trip.user_id) {
+         try {
+           const result = await query('SELECT full_name FROM users WHERE id = $1', [trip.user_id]);
+           if (result.rows[0]) passengerName = result.rows[0].full_name || '';
+         } catch (e) {
+           logger.error('Error fetching passenger name for cancellation', e);
+         }
+      }
+      
       const driverfcmtoken = trip.driver_id
         ? await DriverRepository.getFcmTokenById(trip.driver_id)
         : null;
@@ -831,7 +841,7 @@ export const TripService = {
         }
       } else if (cancelBy === CancelBy.USER) {
         if (driverfcmtoken) {
-          await DriverNotifications.rideCancelled(driverfcmtoken, tripId, mappedReason, cancelBy);
+          await DriverNotifications.rideCancelled(driverfcmtoken, tripId, mappedReason, cancelBy, passengerName);
         }
         if (userfcmtoken) {
           await UserNotifications.bookingCancelled(userfcmtoken, tripId, mappedReason, cancelBy);
@@ -864,6 +874,7 @@ export const TripService = {
       status: updatedTrip.trip_status,
       cancelledBy: cancelBy,
       cancelReason: cancelReason,
+      passengerName: passengerName,
       notes: notes,
       timestamp: new Date().toISOString(),
     });
