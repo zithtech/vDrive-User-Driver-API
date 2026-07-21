@@ -18,8 +18,8 @@ export const TripSchedulerService = {
          JOIN drivers d ON t.driver_id = d.id
          WHERE t.booking_type = 'SCHEDULED' 
          AND t.trip_status = 'ACCEPTED'
-         AND t.scheduled_start_time > $1 - INTERVAL '5 minutes'
-         AND t.scheduled_start_time < $1 + INTERVAL '65 minutes'`,
+         AND t.scheduled_start_time > $1::timestamp - INTERVAL '5 minutes'
+         AND t.scheduled_start_time < $1::timestamp + INTERVAL '65 minutes'`,
         [now]
       );
 
@@ -156,8 +156,8 @@ export const TripSchedulerService = {
          JOIN users u ON t.user_id = u.id
          WHERE t.booking_type = 'SCHEDULED' 
          AND t.trip_status IN ('REQUESTED', 'ACCEPTED')
-         AND t.scheduled_start_time > $1
-         AND t.scheduled_start_time < $1 + INTERVAL '125 minutes'`,
+         AND t.scheduled_start_time > $1::timestamp
+         AND t.scheduled_start_time < $1::timestamp + INTERVAL '125 minutes'`,
         [now]
       );
 
@@ -228,9 +228,9 @@ export const TripSchedulerService = {
                  LEFT JOIN users u ON t.user_id = u.id
                  WHERE t.booking_type = 'SCHEDULED' 
                  AND t.trip_status = 'REQUESTED'
-                 AND t.scheduled_start_time > $1
-                 AND t.scheduled_start_time < $1 + INTERVAL '20 minutes'
-                 AND (t.last_broadcast_at IS NULL OR t.last_broadcast_at < $1 - INTERVAL '10 minutes')`,
+                 AND t.scheduled_start_time > $1::timestamp
+                 AND t.scheduled_start_time < $1::timestamp + INTERVAL '20 minutes'
+                 AND (t.last_broadcast_at IS NULL OR t.last_broadcast_at < $1::timestamp - INTERVAL '10 minutes')`,
         [now]
       );
 
