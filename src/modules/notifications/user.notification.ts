@@ -43,23 +43,41 @@ export const UserNotifications = {
       androidChannelId: 'default',
     }),
 
-  bookingCancelled: (fcmToken: string, bookingId: string, reason?: string, cancelledBy?: string) =>
-    sendToDevice(fcmToken, {
-      type: UserNotificationType.BOOKING_CANCEL,
-      title: 'Booking Cancelled',
-      body: reason || 'Your booking has been cancelled.',
-      data: { bookingId, reason: reason ?? '', cancelledBy: cancelledBy ?? '' },
-      androidChannelId: 'default',
-    }),
+  bookingCancelled: (fcmToken: string, bookingId: string, reason?: string, cancelledBy?: string) => {
+    let title = `Booking Cancelled (ID: ${bookingId})`;
+    let bodyText = `Reason: ${reason || 'Not specified'}`;
 
-  rideCancelled: (fcmToken: string, bookingId: string, reason?: string, cancelledBy?: string) =>
-    sendToDevice(fcmToken, {
-      type: UserNotificationType.RIDE_CANCELLED,
-      title: 'Ride Cancelled by Driver',
-      body: `Your ride has been cancelled by the driver. Reason: ${reason}`,
+    if (cancelledBy === 'ADMIN') {
+      title = `Booking Cancelled by Admin`;
+    }
+
+    return sendToDevice(fcmToken, {
+      type: UserNotificationType.BOOKING_CANCEL,
+      title: title,
+      body: bodyText,
       data: { bookingId, reason: reason ?? '', cancelledBy: cancelledBy ?? '' },
       androidChannelId: 'default',
-    }),
+    });
+  },
+
+  rideCancelled: (fcmToken: string, bookingId: string, reason?: string, cancelledBy?: string) => {
+    let title = `Ride Cancelled (ID: ${bookingId})`;
+    let bodyText = `Reason: ${reason || 'Not specified'}`;
+
+    if (cancelledBy === 'DRIVER') {
+      title = 'Ride Cancelled by Driver';
+    } else if (cancelledBy === 'ADMIN') {
+      title = 'Ride Cancelled by Admin';
+    }
+
+    return sendToDevice(fcmToken, {
+      type: UserNotificationType.RIDE_CANCELLED,
+      title: title,
+      body: bodyText,
+      data: { bookingId, reason: reason ?? '', cancelledBy: cancelledBy ?? '' },
+      androidChannelId: 'default',
+    });
+  },
 
   driverAssigned: (fcmToken: string, driverName: string, bookingId: string) =>
     sendToDevice(fcmToken, {

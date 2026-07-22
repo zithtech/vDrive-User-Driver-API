@@ -199,12 +199,14 @@ export const DriverController = {
   async getRideActivity(req: Request, res: Response, next: NextFunction) {
     try {
       const driverId = req.params.id as string;
-      const { from, to, status } = req.query;
+      const { from, to, status, limit, offset } = req.query;
       const activity = await TripRepository.findActivityByDriverId(
         driverId,
         from as string,
         to as string,
-        status as string
+        status as string,
+        limit ? parseInt(limit as string, 10) : undefined,
+        offset ? parseInt(offset as string, 10) : undefined
       );
       // Map to frontend expected format
       const mappedActivity = activity.map((trip: any) => {

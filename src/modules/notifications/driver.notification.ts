@@ -52,23 +52,45 @@ export const DriverNotifications = {
       androidChannelId: 'ride_requests',
     }),
 
-  rideCancelled: (fcmToken: string, bookingId: string, reason?: string, cancelledBy?: string) =>
-    sendToDevice(fcmToken, {
+  rideCancelled: (fcmToken: string, bookingId: string, reason?: string, cancelledBy?: string, passengerName?: string) => {
+    let title = `Ride Cancelled (ID: ${bookingId})`;
+    let bodyText = `Reason: ${reason || 'Not specified'}`;
+    
+    if (cancelledBy === 'USER') {
+      title = `Ride Cancelled by Passenger`;
+      bodyText = `Passenger ${passengerName || ''} cancelled the ride. Reason: ${reason || 'Not specified'}`;
+    } else if (cancelledBy === 'ADMIN') {
+      title = `Ride Cancelled by Admin`;
+    }
+    
+    return sendToDevice(fcmToken, {
       type: DriverNotificationType.RIDE_CANCELLED,
-      title: 'Ride Cancelled',
-      body: reason || 'The ride has been cancelled.',
-      data: { bookingId, trip_id: bookingId, reason: reason ?? '', cancelledBy: cancelledBy ?? '' },
+      title: title,
+      body: bodyText,
+      data: { bookingId, trip_id: bookingId, reason: reason ?? '', cancelledBy: cancelledBy ?? '', passengerName: passengerName ?? '' },
       androidChannelId: 'ride_requests',
-    }),
+    });
+  },
 
-  bookingCancelled: (fcmToken: string, bookingId: string, reason?: string, cancelledBy?: string) =>
-    sendToDevice(fcmToken, {
+  bookingCancelled: (fcmToken: string, bookingId: string, reason?: string, cancelledBy?: string, passengerName?: string) => {
+    let title = `Booking Cancelled (ID: ${bookingId})`;
+    let bodyText = `Reason: ${reason || 'Not specified'}`;
+    
+    if (cancelledBy === 'USER') {
+      title = `Booking Cancelled by Passenger`;
+      bodyText = `Passenger ${passengerName || ''} cancelled the booking. Reason: ${reason || 'Not specified'}`;
+    } else if (cancelledBy === 'ADMIN') {
+      title = `Booking Cancelled by Admin`;
+    }
+
+    return sendToDevice(fcmToken, {
       type: DriverNotificationType.BOOKING_CANCELLED,
-      title: 'Booking Cancelled',
-      body: reason || 'Your booking has been cancelled.',
-      data: { bookingId, trip_id: bookingId, reason: reason ?? '', cancelledBy: cancelledBy ?? '' },
+      title: title,
+      body: bodyText,
+      data: { bookingId, trip_id: bookingId, reason: reason ?? '', cancelledBy: cancelledBy ?? '', passengerName: passengerName ?? '' },
       androidChannelId: 'ride_requests',
-    }),
+    });
+  },
 
   rideCompleted: (fcmToken: string, bookingId: string, amount: string) =>
     sendToDevice(fcmToken, {

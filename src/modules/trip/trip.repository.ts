@@ -506,7 +506,9 @@ export const TripRepository = {
     driverId: string,
     from?: string,
     to?: string,
-    status?: string
+    status?: string,
+    limit?: number,
+    offset?: number
   ): Promise<any[]> {
     let sql = `
       SELECT t.*, u.full_name AS passenger_name 
@@ -530,6 +532,15 @@ export const TripRepository = {
     }
 
     sql += ` ORDER BY t.created_at DESC`;
+
+    if (limit) {
+      sql += ` LIMIT $${params.length + 1}`;
+      params.push(limit);
+    }
+    if (offset) {
+      sql += ` OFFSET $${params.length + 1}`;
+      params.push(offset);
+    }
 
     const result = await query(sql, params);
     return result.rows;
