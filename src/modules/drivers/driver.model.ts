@@ -86,6 +86,12 @@ export interface Payments {
   commissionPaid: number;
 }
 
+export interface SubscriptionEligibility {
+  basic: boolean;
+  elite: boolean;
+  premium: boolean;
+}
+
 export interface ActivityLog {
   logId: string;
   action: string;
@@ -148,6 +154,7 @@ export interface Driver {
   current_heading?: number;
   referral_code?: string;
   referred_by?: string;
+  subscription_eligibility?: SubscriptionEligibility;
 }
 
 export interface CreateDriverInput {
@@ -189,13 +196,14 @@ export interface CreateDriverInput {
   fcm_token?: string;
   referral_code?: string;
   referred_by?: string;
+  subscription_eligibility?: SubscriptionEligibility;
 }
 
 export interface UpdateDriverInput
   extends Partial<
     Omit<
       CreateDriverInput,
-      'documents' | 'kyc' | 'credit' | 'availability' | 'performance' | 'payments'
+      'documents' | 'kyc' | 'credit' | 'availability' | 'performance' | 'payments' | 'subscription_eligibility'
     >
   > {
   driverId?: string;
@@ -225,4 +233,5 @@ export interface UpdateDriverInput
   total_trips?: number;
   referral_code?: string;
   referred_by?: string;
+  subscription_eligibility?: Partial<SubscriptionEligibility>;
 }

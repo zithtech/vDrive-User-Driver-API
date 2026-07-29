@@ -378,7 +378,7 @@ export const DriverController = {
 
   async getAvailableDriversForAssignment(req: Request, res: Response) {
     try {
-      const { lng, lat, radius } = req.body;
+      const { lng, lat, radius, rideType } = req.body;
       if (!lng || !lat) {
         return res.status(400).json({ success: false, message: 'Missing coordinates' });
       }
@@ -386,7 +386,8 @@ export const DriverController = {
       const drivers = await DriverService.getAvailableDrivers(
         Number(lng),
         Number(lat),
-        Number(radius) || config.defaultSearchRadius
+        Number(radius) || config.defaultSearchRadius,
+        rideType
       );
 
       return res.status(200).json({ success: true, data: drivers });

@@ -12,6 +12,7 @@ import simulationRoutes from '../modules/simulation/simulation.routes';
 import tripTransactionRoutes from '../modules/triptransactions/triptransaction.routes';
 import pricingRoutes from '../modules/pricing/pricing.routes';
 import subscriptionRoutes from '../modules/subscriptions/subscription.routes';
+import { SubscriptionController } from '../modules/subscriptions/subscription.controller';
 import driverDocumentsRoutes from '../modules/drivers/driver-documents.routes';
 import tripVerificationRoutes from '../modules/drivers/trip-verification.routes';
 import adminRoutes from '../modules/admin/admin.routes';
@@ -63,6 +64,10 @@ router.get('/media/proxy', async (req, res) => {
 router.use('/auth', authRoutes);
 router.use('/referrals', referralRoutes);
 router.use('/drivers/referral', driverReferralRoutes);
+
+// Razorpay Webhook (Public — Razorpay verifies via signature, not auth token)
+router.post('/webhooks/razorpay', SubscriptionController.handleRazorpayWebhook);
+
 router.use(isAuthenticatedOrService);
 router.use('/invoices', emailRoutes);
 router.use('/subscriptions', subscriptionRoutes);
