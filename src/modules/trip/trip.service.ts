@@ -749,7 +749,8 @@ export const TripService = {
           const drivers = await DriverService.getAvailableDrivers(
             Number(resetTrip.pickup_lng),
             Number(resetTrip.pickup_lat),
-            500 // radius in meters
+            500, // radius in meters
+            resetTrip.ride_type
           );
 
           // Filter out rejected drivers
@@ -1510,7 +1511,8 @@ export const TripService = {
     const drivers = await DriverService.getAvailableDrivers(
       Number(trip.pickup_lng),
       Number(trip.pickup_lat),
-      Number(radius) || 500
+      Number(radius) || 500,
+      trip.ride_type
     );
 
     if (!drivers || drivers.length === 0) {

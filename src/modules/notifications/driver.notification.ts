@@ -181,6 +181,41 @@ export const DriverNotifications = {
       androidChannelId: 'ride_requests',
     }),
 
+  subscriptionUpgraded: (fcmToken: string, planName: string) =>
+    sendToDevice(fcmToken, {
+      type: DriverNotificationType.SUBSCRIPTION_UPGRADED,
+      title: 'Plan Upgraded 🚀',
+      body: `You've successfully upgraded to ${planName}. Enjoy your new benefits!`,
+      data: { planName },
+      androidChannelId: 'ride_requests',
+    }),
+
+  subscriptionDowngraded: (fcmToken: string, planName: string) =>
+    sendToDevice(fcmToken, {
+      type: DriverNotificationType.SUBSCRIPTION_DOWNGRADED,
+      title: 'Plan Changed ✅',
+      body: `You've switched to ${planName}. Your new plan is now active.`,
+      data: { planName },
+      androidChannelId: 'ride_requests',
+    }),
+
+  subscriptionAutoRenewed: (fcmToken: string, planName: string, nextExpiry: string) =>
+    sendToDevice(fcmToken, {
+      type: DriverNotificationType.SUBSCRIPTION_AUTO_RENEWED,
+      title: 'Subscription Auto-Renewed ✅',
+      body: `Your ${planName} has been automatically renewed. Next renewal: ${nextExpiry}`,
+      data: { planName, nextExpiry },
+      androidChannelId: 'ride_requests',
+    }),
+
+  subscriptionPaymentFailed: (fcmToken: string) =>
+    sendToDevice(fcmToken, {
+      type: DriverNotificationType.SUBSCRIPTION_PAYMENT_FAILED,
+      title: 'Subscription Payment Failed ❌',
+      body: 'Your auto-renewal payment failed. Please recharge manually to continue receiving rides.',
+      androidChannelId: 'ride_requests',
+    }),
+
 
   sosResolved: (fcmToken: string, sosId: string) =>
     sendToDevice(fcmToken, {

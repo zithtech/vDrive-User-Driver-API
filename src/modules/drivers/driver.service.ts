@@ -457,9 +457,9 @@ export const DriverService = {
     let searchedRadius = radius;
 
     if (radius) {
-      drivers = await DriverRepository.findNearbyDrivers(lng, lat, radius);
+      drivers = await DriverRepository.findNearbyDrivers(lng, lat, radius, newTrip.ride_type);
     } else {
-      const result = await DriverRepository.findNearbyDriversExpanding(lng, lat);
+      const result = await DriverRepository.findNearbyDriversExpanding(lng, lat, newTrip.ride_type);
       drivers = result.drivers;
       searchedRadius = result.searchedRadius;
     }
@@ -480,8 +480,8 @@ export const DriverService = {
     return { drivers, searchedRadius };
   },
 
-  async getAvailableDrivers(lng: number, lat: number, radius: number): Promise<any[]> {
-    const driversData = await DriverRepository.findNearbyDrivers(lng, lat, radius);
+  async getAvailableDrivers(lng: number, lat: number, radius: number, rideType?: string): Promise<any[]> {
+    const driversData = await DriverRepository.findNearbyDrivers(lng, lat, radius, rideType);
 
     // Process distance and ETA
     // Average speed 30km/h => 0.5 km/min => 500 meters/min

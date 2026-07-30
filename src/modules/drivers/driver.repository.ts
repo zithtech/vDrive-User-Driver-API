@@ -41,8 +41,8 @@ export const DriverRepository = {
       const driverResult = await client.query(
         `INSERT INTO drivers (
           first_name, last_name, phone_number, alternate_contact, email, profile_pic_url, date_of_birth, gender, 
-          address, role, status, kyc, onboarding_status, documents_submitted, credit, performance, payments, is_trip_verified, language, device_id, is_vibration_enabled, total_earnings, referral_code, referred_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+          address, role, status, kyc, onboarding_status, documents_submitted, credit, performance, payments, is_trip_verified, language, device_id, is_vibration_enabled, total_earnings, referral_code, referred_by, subscription_eligibility
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
         RETURNING *`,
         [
           driverData.first_name,
@@ -77,6 +77,9 @@ export const DriverRepository = {
           driverData.total_earnings || 0,
           referralCode,
           referrerId,
+          driverData.subscription_eligibility
+            ? JSON.stringify(driverData.subscription_eligibility)
+            : '{"basic": true, "elite": false, "premium": false}',
         ]
       );
 
@@ -271,6 +274,10 @@ export const DriverRepository = {
       if (driverData.payments) {
         driverFields.push(`payments = COALESCE(payments, '{}'::jsonb) || $${paramCount++}`);
         driverValues.push(JSON.stringify(driverData.payments));
+      }
+      if (driverData.subscription_eligibility) {
+        driverFields.push(`subscription_eligibility = COALESCE(subscription_eligibility, '{}'::jsonb) || $${paramCount++}`);
+        driverValues.push(JSON.stringify(driverData.subscription_eligibility));
       }
 
       if (driverFields.length > 0) {
@@ -642,6 +649,11 @@ export const DriverRepository = {
         remarks: doc.remarks,
         verifiedAt: doc.verified_at,
       })),
+      subscription_eligibility: safeParse(driver.subscription_eligibility) || {
+        basic: true,
+        elite: false,
+        premium: false,
+      },
     };
   },
 
@@ -649,14 +661,14 @@ export const DriverRepository = {
     return this.findById(id);
   },
 
-  async findNearbyDriversExpanding(lng: number, lat: number) {
+  async findNearbyDriversExpanding(lng: number, lat: number, rideType?: string) {
     const radiusTiers = [500, 2000, 5000, 10000, 20000];
     let drivers = [];
 
     for (const radius of radiusTiers) {
       logger.info(`Searching within ${radius} meters...`);
 
-      drivers = await this.findNearbyDrivers(lng, lat, radius);
+      drivers = await this.findNearbyDrivers(lng, lat, radius, rideType);
 
       if (drivers.length > 0) {
         return {
@@ -671,8 +683,8 @@ export const DriverRepository = {
       searchedRadius: radiusTiers[radiusTiers.length - 1],
     };
   },
-  async findNearbyDrivers(lng: number, lat: number, radiusMeters: number) {
-    logger.info(`findNearbyDrivers: ${lng}, ${lat}, ${radiusMeters}`);
+  async findNearbyDrivers(lng: number, lat: number, radiusMeters: number, rideType?: string) {
+    logger.info(`findNearbyDrivers: ${lng}, ${lat}, ${radiusMeters}, ${rideType}`);
     try {
       const { getRedisClient } = require('../../shared/redis');
       const redis = getRedisClient();
@@ -692,7 +704,7 @@ export const DriverRepository = {
 
       if (!nearbyFromRedis || nearbyFromRedis.length === 0) {
         logger.info('No drivers found in Redis, falling back to PostGIS');
-        return await this.findNearbyDriversPostGIS(lng, lat, radiusMeters);
+        return await this.findNearbyDriversPostGIS(lng, lat, radiusMeters, rideType);
       }
 
       const driverIds = nearbyFromRedis.map((entry) => entry[0]);
@@ -700,21 +712,32 @@ export const DriverRepository = {
       // 2. Query Postgres to filter by availability and get driver details
       const sqlQuery = `
          SELECT
-          id,
-          first_name,
-          last_name,
-          full_name,
-          rating,
-          phone_number,
-          fcm_token,
-          availability
-      FROM drivers
-      WHERE id = ANY($1)
-        AND (availability->>'online')::boolean = true
-        AND (availability->>'status')::text IN ('ONLINE', 'HAS_UPCOMING_SCHEDULED')
-        AND status = 'active'
+          d.id,
+          d.first_name,
+          d.last_name,
+          d.full_name,
+          d.rating,
+          d.phone_number,
+          d.fcm_token,
+          d.availability
+      FROM drivers d
+      JOIN driver_subscriptions ds ON d.id = ds.driver_id
+      JOIN recharge_plans rp ON ds.plan_id = rp.id
+      WHERE d.id = ANY($1)
+        AND (d.availability->>'online')::boolean = true
+        AND (d.availability->>'status')::text IN ('ONLINE', 'HAS_UPCOMING_SCHEDULED')
+        AND d.status = 'active'
+        AND ds.status = 'active'
+        AND ds.expiry_date >= NOW()
+        AND (
+          ($2::text IN ('ONE_WAY', 'ROUND_TRIP') AND rp.plan_name IN ('Basic', 'Elite', 'Premium'))
+          OR 
+          ($2::text IN ('OUTSTATION_ONE_WAY', 'OUTSTATION_ROUND_TRIP') AND rp.plan_name IN ('Elite', 'Premium'))
+          OR 
+          $2::text IS NULL
+        )
       `;
-      const { rows } = await query(sqlQuery, [driverIds]);
+      const { rows } = await query(sqlQuery, [driverIds, rideType || null]);
 
       // 3. Combine DB details with real-time Redis coordinates
       const onlineDrivers = rows.map((dbDriver) => {
@@ -733,32 +756,43 @@ export const DriverRepository = {
       return onlineDrivers;
     } catch (error) {
       logger.error('Error finding nearby drivers via Redis, falling back to PostGIS:', error);
-      return await this.findNearbyDriversPostGIS(lng, lat, radiusMeters);
+      return await this.findNearbyDriversPostGIS(lng, lat, radiusMeters, rideType);
     }
   },
 
-  async findNearbyDriversPostGIS(lng: number, lat: number, radiusMeters: number) {
+  async findNearbyDriversPostGIS(lng: number, lat: number, radiusMeters: number, rideType?: string) {
     const sqlQuery = `
        SELECT
-        id,
-        first_name,
-        last_name,
-        full_name,
-        current_lat,
-        current_lng,
-        rating,
-        phone_number,
-        fcm_token,
-        availability,
-        ROUND(ST_Distance(location, ST_MakePoint($1, $2)::geography)::numeric, 0) as distance_meters
-    FROM drivers
-    WHERE (availability->>'online')::boolean = true
-      AND (availability->>'status')::text IN ('ONLINE', 'HAS_UPCOMING_SCHEDULED')
-      AND status = 'active'
-      AND ST_DWithin(location, ST_MakePoint($1, $2)::geography, $3)
+        d.id,
+        d.first_name,
+        d.last_name,
+        d.full_name,
+        d.current_lat,
+        d.current_lng,
+        d.rating,
+        d.phone_number,
+        d.fcm_token,
+        d.availability,
+        ROUND(ST_Distance(d.location, ST_MakePoint($1, $2)::geography)::numeric, 0) as distance_meters
+    FROM drivers d
+    JOIN driver_subscriptions ds ON d.id = ds.driver_id
+    JOIN recharge_plans rp ON ds.plan_id = rp.id
+    WHERE (d.availability->>'online')::boolean = true
+      AND (d.availability->>'status')::text IN ('ONLINE', 'HAS_UPCOMING_SCHEDULED')
+      AND d.status = 'active'
+      AND ds.status = 'active'
+      AND ds.expiry_date >= NOW()
+      AND ST_DWithin(d.location, ST_MakePoint($1, $2)::geography, $3)
+      AND (
+        ($4::text IN ('ONE_WAY', 'ROUND_TRIP') AND rp.plan_name IN ('Basic', 'Elite', 'Premium'))
+        OR 
+        ($4::text IN ('OUTSTATION_ONE_WAY', 'OUTSTATION_ROUND_TRIP') AND rp.plan_name IN ('Elite', 'Premium'))
+        OR 
+        $4::text IS NULL
+      )
     ORDER BY distance_meters ASC;
     `;
-    const { rows } = await query(sqlQuery, [lng, lat, radiusMeters]);
+    const { rows } = await query(sqlQuery, [lng, lat, radiusMeters, rideType || null]);
     return rows;
   },
 
