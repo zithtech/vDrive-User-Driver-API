@@ -307,7 +307,7 @@ export const DriverController = {
       const driverId = req.params.id as string;
       const driver = await DriverService.getDriverById(driverId);
       return successResponse(res, 200, 'Wallet balance fetched successfully', {
-        balance: driver.credit?.balance || 0,
+        balance: driver.wallet_balance || 0,
         currency: 'INR',
       });
     } catch (err) {
@@ -350,9 +350,70 @@ export const DriverController = {
     try {
       const driverId = req.params.id as string;
       const driver = await DriverService.getDriverById(driverId);
-      return successResponse(res, 200, 'Wallet transactions fetched successfully', {
-        data: driver.creditUsage || [],
+      
+      const transactions = (driver.creditUsage || []).map((u: any) => ({
+        id: u.usageId,
+        type: u.type || (u.amount > 0 ? 'WALLET_TOPUP' : 'WITHDRAW'),
+        title: u.description || (u.amount > 0 ? 'Wallet Topup' : 'Wallet Deduction'),
+        date: new Date(u.createdAt).toLocaleDateString(),
+        time: new Date(u.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        amount: Number(u.amount),
+        status: 'Completed',
+        createdAt: u.createdAt,
+      }));
+
+      transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      return successResponse(res, 200, 'Wallet transactions fetched successfully', transactions);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async createWalletTopupOrder(req: Request, res: Response, next: NextFunction) {
+    try {
+      const driverId = req.params.id as string;
+      const { amount } = req.body;
+      if (!amount || amount <= 0) throw new Error('Invalid amount');
+
+      const Razorpay = require('razorpay');
+      const razorpay = new Razorpay({
+        key_id: process.env.RAZORPAY_KEY_ID,
+        key_secret: process.env.RAZORPAY_KEY_SECRET,
       });
+
+      const options = {
+        amount: Math.round(Number(amount) * 100), // convert to paise
+        currency: 'INR',
+        receipt: `wallet_${driverId.substring(0, 8)}_${Date.now()}`,
+      };
+
+      const order = await razorpay.orders.create(options);
+      return successResponse(res, 200, 'Order created successfully', order);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async verifyWalletTopupPayment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const driverId = req.params.id as string;
+      const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount } = req.body;
+
+      const { PaymentService } = require('../payments/payment.service');
+      const isValid = await PaymentService.verifyWalletTopupSignature({
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature,
+        driverId,
+        amount: Number(amount),
+      });
+
+      if (!isValid) {
+        return res.status(400).json({ success: false, message: 'Invalid signature' });
+      }
+
+      return successResponse(res, 200, 'Payment verified successfully', null);
     } catch (err) {
       next(err);
     }
@@ -410,6 +471,18 @@ export const DriverController = {
       const driverId = req.params.id as string;
       const overview = await DriverService.getTodayOverview(driverId);
       return successResponse(res, 200, "Today's overview fetched successfully", overview);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async setupWalletPin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const driverId = req.params.id as string;
+      const { pin } = req.body;
+
+      await DriverService.setupWalletPin(driverId, pin);
+      return successResponse(res, 200, 'Wallet PIN setup successfully', { success: true });
     } catch (err) {
       next(err);
     }

@@ -122,7 +122,9 @@ export interface Driver {
   total_earnings?: number;
   availability?: Availability;
   kyc_status?: KYC;
-  credit?: Credit;
+  credit?: Credit; // Legacy, kept for typing compatibility if used elsewhere
+  wallet_balance?: number;
+  has_wallet_pin?: boolean;
   recharges?: Recharge[];
   creditUsage?: CreditUsage[];
   created_at?: string;

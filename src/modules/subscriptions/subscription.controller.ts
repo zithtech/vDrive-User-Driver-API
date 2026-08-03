@@ -81,6 +81,18 @@ export const SubscriptionController = {
     }
   },
 
+  // ─── New: Wallet Payment Flow ───────────────────────────────────────
+  async buyWithWallet(req: any, res: Response, next: NextFunction) {
+    try {
+      const driverId = req.user.id;
+      const result = await SubscriptionService.purchaseSubscriptionWithWallet(driverId, req.body);
+      return successResponse(res, 201, 'Subscription purchased successfully with wallet', result);
+    } catch (error: any) {
+      logger.error(`Error in buyWithWallet: ${error.message}`);
+      next(error);
+    }
+  },
+
   // ─── Existing: Queries ──────────────────────────────────────────────
   async getMySubscription(req: any, res: Response, next: NextFunction) {
     try {

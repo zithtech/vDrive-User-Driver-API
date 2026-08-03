@@ -7,6 +7,7 @@ export const createOrderValidator = celebrate({
     billing_cycle: Joi.string().valid('day', 'week', 'month').required(),
     promo_code: Joi.string().optional(),
     use_reward_balance: Joi.boolean().optional(),
+    pin: Joi.string().optional(),
   }),
 });
 
