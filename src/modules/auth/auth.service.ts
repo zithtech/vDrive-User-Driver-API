@@ -12,7 +12,7 @@ import {
   UserRole,
   UserStatus,
 } from '../../enums/user.enums';
-import { isInvalidUser, generateOTP } from '../../utilities/helper';
+import { isInvalidUser } from '../../utilities/helper';
 import { User } from '../users/user.model';
 import { logger } from '../../shared/logger';
 import { DriverNotifications, UserNotifications } from '../notifications';
@@ -47,7 +47,6 @@ async function createNewUser(
     date_of_birth: null,
     gender: null,
     referred_by: referred_by || null,
-    otp: generateOTP(),
   };
 
   if (role === 'driver') {
@@ -79,7 +78,6 @@ async function createNewUser(
       ...newUser,
       role: UserRole.CUSTOMER,
       status: UserStatus.ACTIVE,
-      otp: generateOTP(),
     };
   }
 
@@ -152,7 +150,34 @@ export const AuthService = {
         };
       }
 
-      // 2. Handle Request Rate Limiting
+      // 2. Duplicate request protection: if an unexpired, unused OTP exists
+      //    and was created within the last 30 seconds, return the same TTL
+      //    without generating a new OTP (prevents hash overwrite on double-tap)
+      const OTP_COOLDOWN_MS = 30 * 1000; // 30 seconds
+      if (otpData?.created_at && otpData?.expires_at) {
+        const createdAt = new Date(otpData.created_at).getTime();
+        const expiresAt = new Date(otpData.expires_at).getTime();
+        const now = Date.now();
+        if (
+          now - createdAt < OTP_COOLDOWN_MS &&
+          now < expiresAt &&
+          otpData.attempt_count === 0
+        ) {
+          logger.info(
+            `Duplicate OTP request for ${phone_number} within cooldown — skipping regeneration`
+          );
+          // Return existing TTL without regenerating
+          const userData = await AuthRepository.getUser(phone_number, role);
+          return {
+            expiresIn: TTL,
+            userexists: !!userData,
+            userData: userData?.full_name,
+            otp: null, // Don't resend OTP — app should use the one already received
+          };
+        }
+      }
+
+      // 3. Handle Request Rate Limiting
       let currentRequestCount = otpData?.request_count || 0;
       const lastRequestedAt = otpData?.last_requested_at
         ? new Date(otpData.last_requested_at)
@@ -236,13 +261,13 @@ export const AuthService = {
       logger.info('------------------------------------------');
       const expires_at = new Date(Date.now() + TTL * 60 * 1000);
 
-      // Save otp hash
+      // Save otp hash — attempt_count starts at 0 (no attempts made yet)
       await AuthRepository.saveHashedOtp(
         phone_number,
         role,
         otpHash,
         expires_at,
-        1,
+        0,
         currentRequestCount
       );
       if (userData?.fcm_token) {
@@ -279,12 +304,16 @@ export const AuthService = {
     referred_by,
   }: VerifyOtpUser) {
     try {
-      logger.info(`OTP verification attempt for: ${phone_number} with role: ${role}`);
+      // ✅ Sanitize OTP input — trim whitespace to prevent copy-paste issues
+      const sanitizedOtp = otp?.trim();
+      logger.info(`[OTP-VERIFY] Step 1: Verification attempt for ${phone_number} role=${role}`);
+
       const { maxAttempts: MaxAttempt, otpBlockDuration } = config.auth;
 
       // Get otp data
       const otpData = (await AuthRepository.getOtpData(phone_number, role)) as any;
       if (!otpData) {
+        logger.warn(`[OTP-VERIFY] FAILED: No OTP record found for ${phone_number} role=${role}`);
         throw {
           statusCode: 400,
           message: 'OTP not found or not requested',
@@ -297,6 +326,7 @@ export const AuthService = {
           1,
           Math.ceil((new Date(otpData.blocked_until).getTime() - Date.now()) / (60 * 1000))
         );
+        logger.warn(`[OTP-VERIFY] FAILED: ${phone_number} is blocked for ${remainingTime} more minutes`);
         throw {
           statusCode: 429,
           message: `Account is temporarily locked due to too many failed attempts. Try again after ${remainingTime} minutes.`,
@@ -308,20 +338,25 @@ export const AuthService = {
 
       // Check expiry
       if (new Date() > new Date(expires_at)) {
+        logger.warn(`[OTP-VERIFY] FAILED: OTP expired for ${phone_number} (expired at ${expires_at})`);
         throw {
           statusCode: 400,
           message: 'OTP expired',
         };
       }
 
+      logger.info(`[OTP-VERIFY] Step 2: OTP record valid, attempt_count=${attempt_count}, comparing hash`);
+
       // Compare otp with hash
-      const isMatch = await AuthService.compareHash(otp, otp_hash);
+      const isMatch = await AuthService.compareHash(sanitizedOtp, otp_hash);
 
       if (!isMatch) {
-        // increase attempt_count
+        // Increment attempt count (0-based: first failure makes it 1)
+        const newAttemptCount = attempt_count + 1;
         await AuthRepository.incrementAttemptCount(phone_number, role);
+        logger.warn(`[OTP-VERIFY] FAILED: Hash mismatch for ${phone_number}, attempts now=${newAttemptCount}/${MaxAttempt}`);
 
-        if (attempt_count + 1 >= MaxAttempt) {
+        if (newAttemptCount >= MaxAttempt) {
           const blockUntil = new Date(Date.now() + otpBlockDuration * 60 * 1000);
           await AuthRepository.blockUser(phone_number, role, blockUntil);
 
@@ -343,9 +378,11 @@ export const AuthService = {
 
         throw {
           statusCode: 400,
-          message: `Invalid OTP. You have ${MaxAttempt - (attempt_count + 1)} attempts left.`,
+          message: `Invalid OTP. You have ${MaxAttempt - newAttemptCount} attempts left.`,
         };
       }
+
+      logger.info(`[OTP-VERIFY] Step 3: OTP matched for ${phone_number}, checking user`);
 
       // Verify existing user
       let userData = await AuthRepository.getUser(phone_number, role);
@@ -390,9 +427,11 @@ export const AuthService = {
 
       // Clear otp record
       await AuthRepository.clearOtpRecord(phone_number, role);
+      logger.info(`[OTP-VERIFY] Step 4: OTP record cleared for ${phone_number}`);
 
       // Create new user/driver if not exists
       if (!isExistingUser) {
+        logger.info(`[OTP-VERIFY] Step 5: Creating new ${role} for ${phone_number}`);
         userData = (await createNewUser(role, phone_number, device_id, referred_by)) as any;
         if (role === 'driver') {
           try {
@@ -504,7 +543,7 @@ export const AuthService = {
 
       // ✅ Always update device_id in users table
       await AuthRepository.userDeviceIDUpdate(userId, device_id, role, fcm_token);
-      logger.info(`Device ID "${device_id}" updated for User ID "${userId}"`);
+      logger.info(`[OTP-VERIFY] Step 6: Device ID "${device_id}" updated for ${role} ${userId}`);
 
       // ✅ Invalidate old sessions for this device tied to OTHER users
       if (device_id) {
@@ -513,6 +552,7 @@ export const AuthService = {
 
       // ✅ Always save session — regardless of allow_new_device
       await AuthRepository.upsertSession(userId, device_id, role, refreshToken, fcm_token);
+      logger.info(`[OTP-VERIFY] Step 7: Session created for ${role} ${userId} — verification complete`);
 
       return {
         verified: true,
@@ -527,10 +567,12 @@ export const AuthService = {
             : OnboardingStatus.PHONE_VERIFIED), // Ensure status is returned
       };
     } catch (error: any) {
-      logger.error(`OTP Verification Error: ${error}`);
       if (error.statusCode) {
+        // Already a structured error — log with code for traceability
+        logger.error(`[OTP-VERIFY] Error for ${phone_number}: [${error.statusCode}] ${error.message}`);
         throw error;
       }
+      logger.error(`[OTP-VERIFY] Unexpected error for ${phone_number}: ${error.message || error}`);
       throw {
         statusCode: 500,
         message: 'Failed to verify OTP',

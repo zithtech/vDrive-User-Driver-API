@@ -18,8 +18,8 @@ export const AuthRepository = {
   ): Promise<OTP | null> {
     const now = new Date();
     const result = await query(
-      `INSERT INTO OTP (phone_number, role, otp_hash, created_at, expires_at, attempt_count, request_count, last_requested_at) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO OTP (phone_number, role, otp_hash, created_at, expires_at, attempt_count, request_count, last_requested_at, blocked_until) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)
        ON CONFLICT (phone_number, role) 
        DO UPDATE SET 
           otp_hash = EXCLUDED.otp_hash, 
@@ -27,7 +27,8 @@ export const AuthRepository = {
           attempt_count = EXCLUDED.attempt_count, 
           request_count = EXCLUDED.request_count,
           last_requested_at = EXCLUDED.last_requested_at,
-          created_at = EXCLUDED.created_at
+          created_at = EXCLUDED.created_at,
+          blocked_until = NULL
        RETURNING *`,
       [phone_number, role, otpHash, now, expires_at, attempt_count, request_count, now]
     );
@@ -134,6 +135,13 @@ export const AuthRepository = {
 
       // ✅ Clear device_id from users/drivers table
       await query(`UPDATE ${table} SET device_id = NULL WHERE id = $1`, [userId]);
+
+      // ✅ Clear stale OTP records to prevent rate-limit carry-over on re-auth
+      const phoneResult = await query(`SELECT phone_number FROM ${table} WHERE id = $1`, [userId]);
+      if (phoneResult.rows[0]?.phone_number) {
+        await AuthRepository.clearOtpRecord(phoneResult.rows[0].phone_number, role);
+        logger.info(`OTP record cleared for ${phoneResult.rows[0].phone_number} on sign-out`);
+      }
 
       // ✅ Unsubscribe from FCM topic
       if (fcmToken) {

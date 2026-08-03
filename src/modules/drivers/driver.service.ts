@@ -1,5 +1,6 @@
 // src/modules/drivers/driver.service.ts
 import { DriverRepository } from './driver.repository';
+import bcrypt from 'bcrypt';
 import { CreateDriverInput, UpdateDriverInput, Driver } from './driver.model';
 import { TripService } from '../trip/trip.service';
 import { Server } from 'socket.io';
@@ -605,5 +606,25 @@ export const DriverService = {
       [driverId]
     );
     return Math.round(parseFloat(result.rows[0]?.total_minutes || 0) / 60);
+  },
+  async setupWalletPin(driverId: string, pin: string) {
+    if (!pin || pin.length !== 4) {
+      throw { statusCode: 400, message: 'PIN must be exactly 4 digits' };
+    }
+    const hashedPin = await bcrypt.hash(pin, 10);
+    const updateSql = `UPDATE drivers SET wallet_pin = $1 WHERE id = $2 RETURNING *`;
+    const result = await query(updateSql, [hashedPin, driverId]);
+    if (result.rowCount === 0) {
+      throw { statusCode: 404, message: 'Driver not found' };
+    }
+    return { success: true };
+  },
+
+  async verifyWalletPin(driverId: string, pin: string): Promise<boolean> {
+    if (!pin) return false;
+    const result = await query('SELECT wallet_pin FROM drivers WHERE id = $1', [driverId]);
+    const driver = result.rows[0];
+    if (!driver || !driver.wallet_pin) return false;
+    return await bcrypt.compare(pin, driver.wallet_pin);
   },
 };

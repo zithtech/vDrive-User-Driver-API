@@ -2,6 +2,7 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { SubscriptionRepository } from './subscription.repository';
 import { DriverRepository } from '../drivers/driver.repository';
+import { DriverService } from '../drivers/driver.service';
 import { PromoService } from '../promos/promo.service';
 import {
   CreateOrderRequest,
@@ -156,8 +157,8 @@ export const SubscriptionService = {
     }
 
     // 2. Referral/Reward Balance Check (Manual usage)
-    if (input.use_reward_balance && driver?.credit?.balance) {
-      const availableBalance = Number(driver.credit.balance || 0);
+    if (input.use_reward_balance && driver?.wallet_balance) {
+      const availableBalance = Number(driver.wallet_balance || 0);
       const remainingAfterPromo = Math.max(0, amount - discountAmount);
 
       // Use balance up to the remaining amount
@@ -266,7 +267,7 @@ export const SubscriptionService = {
 
       // 4. Deduct Wallet Balance (ATOM-SYNC)
       if (Number(payment.reward_amount_used || 0) > 0) {
-        await DriverRepository.deductCredit(
+        await DriverRepository.deductFromWallet(
           driverId,
           Number(payment.reward_amount_used),
           'SUBSCRIPTION_PAYMENT',
@@ -275,12 +276,12 @@ export const SubscriptionService = {
         );
         
         // Notify driver of wallet deduction
-        const driverRes = await client.query('SELECT fcm_token, credit_balance FROM drivers WHERE id = $1', [driverId]);
+        const driverRes = await client.query('SELECT d.fcm_token, COALESCE(w.balance, 0) as wallet_balance FROM drivers d LEFT JOIN driver_wallets w ON d.id = w.driver_id WHERE d.id = $1', [driverId]);
         if (driverRes.rows[0]?.fcm_token) {
            await DriverNotifications.walletDebited(
                driverRes.rows[0].fcm_token,
                (payment.reward_amount_used || 0).toString(),
-               driverRes.rows[0].credit_balance.toString()
+               driverRes.rows[0].wallet_balance.toString()
            ).catch(err => logger.error(`Push error: ${err.message}`));
         }
       }
@@ -897,6 +898,153 @@ export const SubscriptionService = {
 
   // ═══════════════════════════════════════════════════════════════════
   // EXISTING: Queries (unchanged)
+  // ═══════════════════════════════════════════════════════════════════
+  // NEW: Wallet Payment Flow
+  // ═══════════════════════════════════════════════════════════════════
+
+  async purchaseSubscriptionWithWallet(driverId: string, input: CreateOrderRequest & { pin?: string }) {
+    const plan = await SubscriptionRepository.getPlanById(input.plan_id);
+    if (!plan) throw new Error('Invalid plan ID or plan is not active');
+
+    if (!input.pin) {
+      throw { statusCode: 400, message: 'Wallet PIN is required' };
+    }
+
+    const isValidPin = await DriverService.verifyWalletPin(driverId, input.pin);
+    if (!isValidPin) {
+      throw { statusCode: 401, message: 'Invalid Wallet PIN' };
+    }
+
+    const existingSub = await SubscriptionRepository.getActiveSubscription(driverId);
+    let proratedCredit = 0;
+    let isUpgrade = false;
+    
+    if (existingSub && existingSub.plan_id !== input.plan_id) {
+      const oldPlan = await SubscriptionRepository.getPlanById(existingSub.plan_id);
+      if (oldPlan) {
+        const durationValues: Record<string, number> = { day: 1, week: 7, month: 30 };
+        const oldDuration = durationValues[existingSub.billing_cycle] || 0;
+        const newDuration = durationValues[input.billing_cycle] || 0;
+        const isTierDowngrade = plan.id < oldPlan.id;
+        const isDurationDowngrade = newDuration < oldDuration;
+        const isDowngrade = isTierDowngrade || (plan.id === oldPlan.id && isDurationDowngrade);
+        
+        if (isDowngrade) {
+          throw new Error('Downgrading an active plan is not allowed.');
+        }
+
+        isUpgrade = true;
+
+        const oldPlanPrice = getPlanPrice(oldPlan, existingSub.billing_cycle);
+        const totalDays = daysBetween(new Date(existingSub.start_date), new Date(existingSub.expiry_date));
+        const unusedDays = daysBetween(new Date(), new Date(existingSub.expiry_date));
+        if (totalDays > 0 && unusedDays > 0) {
+          proratedCredit = Math.round(((oldPlanPrice / totalDays) * unusedDays) * 100) / 100;
+        }
+      }
+    }
+
+    let amount = getPlanPrice(plan, input.billing_cycle);
+    amount = Math.max(0, amount - proratedCredit);
+
+    let discountAmount = 0;
+    let appliedPromoId: number | undefined;
+    if (input.promo_code) {
+      const validation = await PromoService.validatePromo(input.promo_code, driverId, amount);
+      if (!validation.isValid) throw new Error(validation.message || 'Invalid promo code');
+      discountAmount = validation.discountAmount;
+      appliedPromoId = validation.promo?.id;
+    }
+    
+    if (Number(plan.first_recharge_discount || 0) > 0) {
+      const hasPurchasedBefore = await SubscriptionRepository.hasSuccessfulPayments(driverId);
+      if (!hasPurchasedBefore) {
+        const firstDiscount = (amount * Number(plan.first_recharge_discount)) / 100;
+        discountAmount = Math.max(discountAmount, firstDiscount);
+      }
+    }
+    
+    amount = Math.max(0, amount - discountAmount);
+
+    const driver = await DriverRepository.findById(driverId);
+    if (!driver || Number(driver.wallet_balance || 0) < amount) {
+      throw new Error(`Insufficient wallet balance. You need ₹${amount} but have ₹${driver?.wallet_balance || 0}.`);
+    }
+
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+
+      const payment = await SubscriptionRepository.createPayment({
+        driver_id: driverId,
+        plan_id: plan.id,
+        billing_cycle: input.billing_cycle,
+        amount: amount,
+        currency: 'INR',
+        razorpay_order_id: `wallet_${driverId.substring(0, 8)}_${Date.now()}`,
+        status: 'completed',
+        applied_promo_id: appliedPromoId,
+        discount_amount: discountAmount,
+        reward_amount_used: amount,
+        prorated_credit: proratedCredit,
+        is_upgrade: isUpgrade,
+        is_downgrade: false,
+        payment_type: isUpgrade ? 'upgrade' : (existingSub ? 'subscription_renewal' : 'subscription_creation'),
+      }, client);
+      
+      if (amount > 0) {
+        await DriverRepository.deductFromWallet(
+          driverId,
+          amount,
+          'SUBSCRIPTION_PAYMENT',
+          `Paid for ${plan.plan_name} (${input.billing_cycle}) via wallet`,
+          client
+        );
+      }
+      
+      if (appliedPromoId && payment.id) {
+        await PromoService.usePromo(Number(appliedPromoId), driverId, payment.id, discountAmount, client);
+      }
+
+      if (existingSub) {
+        await SubscriptionRepository.expireActiveSubscription(driverId, client);
+      }
+
+      const startDate = new Date();
+      const expiryDate = new Date();
+      if (input.billing_cycle === 'day') expiryDate.setDate(expiryDate.getDate() + 1);
+      else if (input.billing_cycle === 'week') expiryDate.setDate(expiryDate.getDate() + 7);
+      else if (input.billing_cycle === 'month') expiryDate.setMonth(expiryDate.getMonth() + 1);
+
+      await SubscriptionRepository.createSubscription(
+        {
+          driver_id: driverId,
+          plan_id: plan.id,
+          billing_cycle: input.billing_cycle as any,
+          start_date: startDate,
+          expiry_date: expiryDate,
+          status: 'active',
+          auto_renew: false,
+        },
+        client
+      );
+
+      await client.query(
+        `UPDATE drivers SET subscription_active = true, onboarding_status = 'SUBSCRIPTION_ACTIVE', updated_at = NOW() WHERE id = $1`,
+        [driverId]
+      );
+
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+    
+    return { success: true, amount_paid: amount };
+  },
+
   // ═══════════════════════════════════════════════════════════════════
 
   async getMySubscription(driverId: string) {

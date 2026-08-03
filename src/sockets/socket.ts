@@ -8,6 +8,8 @@ import registerChatSocket from './chat.socket';
 import registerSupportSocket from './support.socket';
 import jwt from 'jsonwebtoken';
 import config from '../config';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { getRedisClient } from '../shared/redis';
 
 let io: Server;
 
@@ -24,6 +26,10 @@ export const initSocket = (server: HttpServer): Server => {
     },
     transports: ['websocket', 'polling'],
   });
+
+  const pubClient = getRedisClient();
+  const subClient = pubClient.duplicate();
+  io.adapter(createAdapter(pubClient, subClient));
 
   io.use((socket: any, next) => {
     const token = socket.handshake.auth?.token;

@@ -135,4 +135,44 @@ export const PaymentService = {
       throw error;
     }
   },
+
+  async verifyWalletTopupSignature(data: IVerifyPaymentRequest & { driverId: string; amount: number }): Promise<boolean> {
+    try {
+      const { razorpay_order_id, razorpay_payment_id, razorpay_signature, driverId, amount } = data;
+      const secret = process.env.RAZORPAY_KEY_SECRET as string;
+
+      const generated_signature = crypto
+        .createHmac('sha256', secret)
+        .update(razorpay_order_id + '|' + razorpay_payment_id)
+        .digest('hex');
+
+      if (generated_signature === razorpay_signature) {
+        const { DriverRepository } = require('../drivers/driver.repository');
+        
+        // Prevent duplicate processing
+        const { query } = require('../../shared/database');
+        const existing = await query('SELECT id FROM driver_wallet_transactions WHERE reference_id = $1', [razorpay_order_id]);
+        if (existing.rows.length > 0) {
+          logger.info(`Wallet topup already processed for order: ${razorpay_order_id}`);
+          return true;
+        }
+
+        // Add to wallet
+        await DriverRepository.addToWallet(
+          driverId,
+          amount,
+          'TOPUP',
+          `Topup via Razorpay: ${razorpay_order_id}`,
+          undefined,
+          razorpay_order_id
+        );
+
+        return true;
+      }
+      return false;
+    } catch (error) {
+      logger.error(`Service Error (verifyWalletTopupSignature): ${error}`);
+      throw error;
+    }
+  },
 };

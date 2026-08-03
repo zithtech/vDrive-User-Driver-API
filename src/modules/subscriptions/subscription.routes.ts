@@ -19,6 +19,9 @@ router.post('/verify-payment', verifyPaymentValidator, SubscriptionController.ve
 router.post('/auto-subscribe', createAutoSubscriptionValidator, SubscriptionController.createAutoSubscription);
 router.post('/verify-subscription', verifySubscriptionPaymentValidator, SubscriptionController.verifySubscriptionPayment);
 
+// ─── New: Wallet Payment Route ──────────────────────────────────────
+router.post('/buy-with-wallet', createOrderValidator, SubscriptionController.buyWithWallet);
+
 // ─── New: Plan Change Preview (Proration) ───────────────────────────
 router.get('/preview-plan-change', previewPlanChangeValidator, SubscriptionController.previewPlanChange);
 
