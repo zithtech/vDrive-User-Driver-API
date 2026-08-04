@@ -112,6 +112,35 @@ const dispatchToUser = async (io: Server, event: string, data: any): Promise<voi
       break;
     }
 
+    case 'PLAN_ELIGIBILITY_UPDATE': {
+      const { driverId, eligibility } = data || {};
+      if (driverId) {
+        io.to(`driver_${driverId}`).emit('PLAN_ELIGIBILITY_UPDATE', {
+          eligibility,
+          timestamp: new Date().toISOString(),
+        });
+        
+        try {
+          const { NotificationService } = require('../modules/notifications/notification.service');
+          let planNames = [];
+          if (eligibility?.premium) planNames.push('Premium');
+          if (eligibility?.elite) planNames.push('Elite');
+          
+          if (planNames.length > 0) {
+            await NotificationService.sendNotificationToDriver(
+              driverId,
+              'Subscription Update',
+              `Admin has granted you access to ${planNames.join(' & ')} plan(s).`,
+              { type: 'PLAN_ELIGIBILITY_UPDATE' }
+            );
+          }
+        } catch (err: any) {
+          logger.error(`Failed to send push notification for PLAN_ELIGIBILITY_UPDATE: ${err.message}`);
+        }
+      }
+      break;
+    }
+
     case 'broadcast_to_users':
       io.emit('announcement', data);
       break;

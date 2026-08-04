@@ -52,23 +52,45 @@ export const DriverNotifications = {
       androidChannelId: 'ride_requests',
     }),
 
-  rideCancelled: (fcmToken: string, bookingId: string, reason?: string, cancelledBy?: string) =>
-    sendToDevice(fcmToken, {
+  rideCancelled: (fcmToken: string, bookingId: string, reason?: string, cancelledBy?: string, passengerName?: string) => {
+    let title = `Ride Cancelled (ID: ${bookingId})`;
+    let bodyText = `Reason: ${reason || 'Not specified'}`;
+    
+    if (cancelledBy === 'USER') {
+      title = `Ride Cancelled by Passenger`;
+      bodyText = `Passenger ${passengerName || ''} cancelled the ride. Reason: ${reason || 'Not specified'}`;
+    } else if (cancelledBy === 'ADMIN') {
+      title = `Ride Cancelled by Admin`;
+    }
+    
+    return sendToDevice(fcmToken, {
       type: DriverNotificationType.RIDE_CANCELLED,
-      title: 'Ride Cancelled',
-      body: reason || 'The ride has been cancelled.',
-      data: { bookingId, trip_id: bookingId, reason: reason ?? '', cancelledBy: cancelledBy ?? '' },
+      title: title,
+      body: bodyText,
+      data: { bookingId, trip_id: bookingId, reason: reason ?? '', cancelledBy: cancelledBy ?? '', passengerName: passengerName ?? '' },
       androidChannelId: 'ride_requests',
-    }),
+    });
+  },
 
-  bookingCancelled: (fcmToken: string, bookingId: string, reason?: string, cancelledBy?: string) =>
-    sendToDevice(fcmToken, {
+  bookingCancelled: (fcmToken: string, bookingId: string, reason?: string, cancelledBy?: string, passengerName?: string) => {
+    let title = `Booking Cancelled (ID: ${bookingId})`;
+    let bodyText = `Reason: ${reason || 'Not specified'}`;
+    
+    if (cancelledBy === 'USER') {
+      title = `Booking Cancelled by Passenger`;
+      bodyText = `Passenger ${passengerName || ''} cancelled the booking. Reason: ${reason || 'Not specified'}`;
+    } else if (cancelledBy === 'ADMIN') {
+      title = `Booking Cancelled by Admin`;
+    }
+
+    return sendToDevice(fcmToken, {
       type: DriverNotificationType.BOOKING_CANCELLED,
-      title: 'Booking Cancelled',
-      body: reason || 'Your booking has been cancelled.',
-      data: { bookingId, trip_id: bookingId, reason: reason ?? '', cancelledBy: cancelledBy ?? '' },
+      title: title,
+      body: bodyText,
+      data: { bookingId, trip_id: bookingId, reason: reason ?? '', cancelledBy: cancelledBy ?? '', passengerName: passengerName ?? '' },
       androidChannelId: 'ride_requests',
-    }),
+    });
+  },
 
   rideCompleted: (fcmToken: string, bookingId: string, amount: string) =>
     sendToDevice(fcmToken, {
@@ -156,6 +178,41 @@ export const DriverNotifications = {
       title: 'Subscription Expiring Soon ⚠️',
       body: `Your ${planName} expires tomorrow. Recharge now to continue receiving rides!`,
       data: { planName },
+      androidChannelId: 'ride_requests',
+    }),
+
+  subscriptionUpgraded: (fcmToken: string, planName: string) =>
+    sendToDevice(fcmToken, {
+      type: DriverNotificationType.SUBSCRIPTION_UPGRADED,
+      title: 'Plan Upgraded 🚀',
+      body: `You've successfully upgraded to ${planName}. Enjoy your new benefits!`,
+      data: { planName },
+      androidChannelId: 'ride_requests',
+    }),
+
+  subscriptionDowngraded: (fcmToken: string, planName: string) =>
+    sendToDevice(fcmToken, {
+      type: DriverNotificationType.SUBSCRIPTION_DOWNGRADED,
+      title: 'Plan Changed ✅',
+      body: `You've switched to ${planName}. Your new plan is now active.`,
+      data: { planName },
+      androidChannelId: 'ride_requests',
+    }),
+
+  subscriptionAutoRenewed: (fcmToken: string, planName: string, nextExpiry: string) =>
+    sendToDevice(fcmToken, {
+      type: DriverNotificationType.SUBSCRIPTION_AUTO_RENEWED,
+      title: 'Subscription Auto-Renewed ✅',
+      body: `Your ${planName} has been automatically renewed. Next renewal: ${nextExpiry}`,
+      data: { planName, nextExpiry },
+      androidChannelId: 'ride_requests',
+    }),
+
+  subscriptionPaymentFailed: (fcmToken: string) =>
+    sendToDevice(fcmToken, {
+      type: DriverNotificationType.SUBSCRIPTION_PAYMENT_FAILED,
+      title: 'Subscription Payment Failed ❌',
+      body: 'Your auto-renewal payment failed. Please recharge manually to continue receiving rides.',
       androidChannelId: 'ride_requests',
     }),
 

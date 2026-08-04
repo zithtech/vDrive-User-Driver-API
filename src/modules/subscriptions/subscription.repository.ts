@@ -24,6 +24,23 @@ export const SubscriptionRepository = {
     }));
   },
 
+  // ─── Razorpay Plan ID Caching ───────────────────────────────────────
+
+  async getRazorpayPlanId(planId: number, billingCycle: string, client?: any): Promise<string | null> {
+    const q = client ? client.query.bind(client) : query;
+    const column = `razorpay_plan_id_${billingCycle === 'day' ? 'daily' : billingCycle === 'week' ? 'weekly' : 'monthly'}`;
+    const result = await q(`SELECT ${column} FROM recharge_plans WHERE id = $1`, [planId]);
+    return result.rows[0]?.[column] || null;
+  },
+
+  async saveRazorpayPlanId(planId: number, billingCycle: string, razorpayPlanId: string, client?: any): Promise<void> {
+    const q = client ? client.query.bind(client) : query;
+    const column = `razorpay_plan_id_${billingCycle === 'day' ? 'daily' : billingCycle === 'week' ? 'weekly' : 'monthly'}`;
+    await q(`UPDATE recharge_plans SET ${column} = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, [razorpayPlanId, planId]);
+  },
+
+  // ─── Payment Records ───────────────────────────────────────────────
+
   async createPayment(paymentData: Partial<PaymentRecord>, client?: any): Promise<PaymentRecord> {
     const q = client ? client.query.bind(client) : query;
     const {
@@ -33,25 +50,37 @@ export const SubscriptionRepository = {
       amount,
       currency,
       razorpay_order_id,
+      razorpay_subscription_id,
       status,
       applied_promo_id,
       discount_amount,
       reward_amount_used,
+      prorated_credit,
+      is_upgrade,
+      is_downgrade,
+      payment_type,
     } = paymentData;
     const result = await q(
-      `INSERT INTO payments (driver_id, plan_id, billing_cycle, amount, currency, razorpay_order_id, status, applied_promo_id, discount_amount, reward_amount_used)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      `INSERT INTO payments (driver_id, plan_id, billing_cycle, amount, currency, razorpay_order_id, 
+       razorpay_subscription_id, status, applied_promo_id, discount_amount, reward_amount_used,
+       prorated_credit, is_upgrade, is_downgrade, payment_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
       [
         driver_id,
         plan_id,
         billing_cycle,
         amount,
         currency,
-        razorpay_order_id,
+        razorpay_order_id || null,
+        razorpay_subscription_id || null,
         status,
-        applied_promo_id,
-        discount_amount,
-        reward_amount_used,
+        applied_promo_id || null,
+        discount_amount || 0,
+        reward_amount_used || 0,
+        prorated_credit || 0,
+        is_upgrade || false,
+        is_downgrade || false,
+        payment_type || 'one_time',
       ]
     );
     return result.rows[0];
@@ -80,6 +109,8 @@ export const SubscriptionRepository = {
     return result.rows[0];
   },
 
+  // ─── Driver Subscriptions ──────────────────────────────────────────
+
   async getActiveSubscription(driverId: string, client?: any): Promise<DriverSubscription | null> {
     const q = client ? client.query.bind(client) : query;
     const result = await q(
@@ -97,19 +128,85 @@ export const SubscriptionRepository = {
     );
   },
 
+  async cancelActiveSubscription(driverId: string, client?: any): Promise<void> {
+    const q = client ? client.query.bind(client) : query;
+    await q(
+      "UPDATE driver_subscriptions SET status = 'cancelled', auto_renew = false, updated_at = CURRENT_TIMESTAMP WHERE driver_id = $1 AND status = 'active'",
+      [driverId]
+    );
+  },
+
   async createSubscription(
     subscriptionData: Partial<DriverSubscription>,
     client?: any
   ): Promise<DriverSubscription> {
     const q = client ? client.query.bind(client) : query;
-    const { driver_id, plan_id, billing_cycle, start_date, expiry_date, status } = subscriptionData;
+    const {
+      driver_id, plan_id, billing_cycle, start_date, expiry_date, status,
+      auto_renew, razorpay_subscription_id, previous_plan_id, prorated_credit,
+    } = subscriptionData;
     const result = await q(
-      `INSERT INTO driver_subscriptions (driver_id, plan_id, billing_cycle, start_date, expiry_date, status)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [driver_id, plan_id, billing_cycle, start_date, expiry_date, status]
+      `INSERT INTO driver_subscriptions 
+       (driver_id, plan_id, billing_cycle, start_date, expiry_date, status, auto_renew, razorpay_subscription_id, previous_plan_id, prorated_credit)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [
+        driver_id, plan_id, billing_cycle, start_date, expiry_date, status,
+        auto_renew || false,
+        razorpay_subscription_id || null,
+        previous_plan_id || null,
+        prorated_credit || 0,
+      ]
     );
     return result.rows[0];
   },
+
+  async updateSubscriptionAutoRenew(driverId: string, autoRenew: boolean, client?: any): Promise<void> {
+    const q = client ? client.query.bind(client) : query;
+    await q(
+      "UPDATE driver_subscriptions SET auto_renew = $2, updated_at = CURRENT_TIMESTAMP WHERE driver_id = $1 AND status = 'active'",
+      [driverId, autoRenew]
+    );
+  },
+
+  async getSubscriptionByRazorpayId(razorpaySubId: string, client?: any): Promise<DriverSubscription | null> {
+    const q = client ? client.query.bind(client) : query;
+    const result = await q(
+      "SELECT * FROM driver_subscriptions WHERE razorpay_subscription_id = $1 AND status = 'active'",
+      [razorpaySubId]
+    );
+    return result.rows[0] || null;
+  },
+
+  // ─── Subscription Events (Webhook Idempotency) ─────────────────────
+
+  async isEventProcessed(eventId: string, client?: any): Promise<boolean> {
+    const q = client ? client.query.bind(client) : query;
+    const result = await q('SELECT id FROM subscription_events WHERE razorpay_event_id = $1', [eventId]);
+    return (result.rowCount ?? 0) > 0;
+  },
+
+  async recordEvent(eventData: {
+    razorpay_event_id: string;
+    event_type: string;
+    razorpay_subscription_id?: string;
+    razorpay_payment_id?: string;
+    payload?: any;
+  }, client?: any): Promise<void> {
+    const q = client ? client.query.bind(client) : query;
+    await q(
+      `INSERT INTO subscription_events (razorpay_event_id, event_type, razorpay_subscription_id, razorpay_payment_id, payload)
+       VALUES ($1, $2, $3, $4, $5) ON CONFLICT (razorpay_event_id) DO NOTHING`,
+      [
+        eventData.razorpay_event_id,
+        eventData.event_type,
+        eventData.razorpay_subscription_id || null,
+        eventData.razorpay_payment_id || null,
+        eventData.payload ? JSON.stringify(eventData.payload) : null,
+      ]
+    );
+  },
+
+  // ─── Expiration & Cleanup ──────────────────────────────────────────
 
   async expireReachedSubscriptions(client?: any): Promise<number> {
     const q = client ? client.query.bind(client) : query;
@@ -129,7 +226,6 @@ export const SubscriptionRepository = {
     );
 
     // 3. Update drivers table status for these drivers
-    // Note: In real scenarios, a driver might have another pending sub, but standard flow is they become inactive.
     await q(
       'UPDATE drivers SET subscription_active = false, updated_at = NOW() WHERE id = ANY($1)',
       [driverIds]

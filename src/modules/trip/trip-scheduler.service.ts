@@ -237,21 +237,35 @@ export const TripSchedulerService = {
       if (result.rows.length === 0) return;
 
       // Fetch UNIQUE fcm_tokens for drivers with active status and subscription (Online & Offline)
-      // Only include those who completed all processes and do NOT have a 'daily' subscription plan.
+      // Allow daily plans but filter by ride type
       const eligibleDrivers = await query(
-        `SELECT DISTINCT d.fcm_token 
+        `SELECT DISTINCT d.fcm_token, rp.plan_name 
          FROM drivers d
          JOIN driver_subscriptions ds ON d.id = ds.driver_id
+         JOIN recharge_plans rp ON ds.plan_id = rp.id
          WHERE d.status = 'active'
            AND d.onboarding_status = 'SUBSCRIPTION_ACTIVE'
            AND ds.status = 'active'
-           AND ds.billing_cycle != 'day'
+           AND ds.expiry_date >= NOW()
            AND d.fcm_token IS NOT NULL`
       );
 
       for (const trip of result.rows) {
         let broadcastSuccess = false;
-        for (const driver of eligibleDrivers.rows) {
+        
+        const allowedDrivers = eligibleDrivers.rows.filter((driver) => {
+          const plan = driver.plan_name;
+          const rType = trip.ride_type;
+          
+          if (['ONE_WAY', 'ROUND_TRIP'].includes(rType)) {
+            return ['Basic', 'Elite', 'Premium'].includes(plan);
+          } else if (['OUTSTATION_ONE_WAY', 'OUTSTATION_ROUND_TRIP'].includes(rType)) {
+            return ['Elite', 'Premium'].includes(plan);
+          }
+          return true;
+        });
+
+        for (const driver of allowedDrivers) {
           const messageId = await NotificationService.sendNotification(
             driver.fcm_token,
             'New Scheduled Ride Request',
@@ -295,16 +309,24 @@ export const TripSchedulerService = {
   async broadcastNewScheduledRide(trip: any, io?: any) {
     try {
       // Fetch UNIQUE fcm_tokens for drivers with active status and subscription (Online & Offline)
-      // Only include those who completed all processes and do NOT have a 'daily' subscription plan.
       const eligibleDrivers = await query(
         `SELECT DISTINCT d.fcm_token 
          FROM drivers d
          JOIN driver_subscriptions ds ON d.id = ds.driver_id
+         JOIN recharge_plans rp ON ds.plan_id = rp.id
          WHERE d.status = 'active'
            AND d.onboarding_status = 'SUBSCRIPTION_ACTIVE'
            AND ds.status = 'active'
-           AND ds.billing_cycle != 'day'
-           AND d.fcm_token IS NOT NULL`
+           AND ds.expiry_date >= NOW()
+           AND d.fcm_token IS NOT NULL
+           AND (
+             ($1::text IN ('ONE_WAY', 'ROUND_TRIP') AND rp.plan_name IN ('Basic', 'Elite', 'Premium'))
+             OR 
+             ($1::text IN ('OUTSTATION_ONE_WAY', 'OUTSTATION_ROUND_TRIP') AND rp.plan_name IN ('Elite', 'Premium'))
+             OR 
+             $1::text IS NULL
+           )`,
+         [trip.ride_type || null]
       );
 
       const startTimeStr =

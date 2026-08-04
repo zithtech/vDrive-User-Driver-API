@@ -37,6 +37,9 @@ router.get('/earnings/:id/summary', DriverController.getEarningsSummary);
 router.get('/earnings/:id/transactions', DriverController.getEarningsTransactions);
 router.get('/wallet/:id/balance', DriverController.getWalletBalance);
 router.get('/wallet/:id/transactions', DriverController.getWalletTransactions);
+router.post('/wallet/:id/setup-pin', DriverController.setupWalletPin);
+router.post('/wallet/:id/topup/order', DriverController.createWalletTopupOrder);
+router.post('/wallet/:id/topup/verify', DriverController.verifyWalletTopupPayment);
 router.get('/today-overview/:id', DriverController.getTodayOverview);
 router.post('/search', findNearbyDriversValidator, DriverController.findNearbyDrivers);
 router.post(

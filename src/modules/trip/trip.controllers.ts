@@ -195,29 +195,7 @@ export const TripController = {
         cancelReason: trip.cancel_reason,
         cancelledBy: trip.cancel_by,
       });
-      const userfcmtoken = trip.user_id ? await UserRepository.getFcmTokenById(trip.user_id) : null;
 
-      const driverfcmtoken = trip.driver_id
-        ? await DriverRepository.getFcmTokenById(trip.driver_id)
-        : null;
-
-      if (cancel_by === CancelBy.USER) {
-        if (userfcmtoken && trip.trip_id) {
-          await UserNotifications.bookingCancelled(userfcmtoken, trip.trip_id, notes || '');
-        }
-        // ✅ guard driverfcmtoken before passing
-        if (driverfcmtoken && trip.trip_id) {
-          await DriverNotifications.rideCancelled(driverfcmtoken, trip.trip_id);
-        }
-      } else if (cancel_by === CancelBy.DRIVER) {
-        if (driverfcmtoken && trip.trip_id) {
-          await DriverNotifications.bookingCancelled(driverfcmtoken, trip.trip_id, notes || '');
-        }
-        // ✅ guard userfcmtoken before passing
-        if (userfcmtoken && trip.trip_id) {
-          await UserNotifications.rideCancelled(userfcmtoken, trip.trip_id);
-        }
-      }
 
       return res.status(200).json({
         success: true,

@@ -87,7 +87,7 @@ export const DriverReferralService = {
   ) {
     try {
       // 1. Add credit to driver's wallet
-      await DriverRepository.addCredit(driverId, amount, 'REFERRAL_REWARD', description, client);
+      await DriverRepository.addToWallet(driverId, amount, 'REFERRAL_REWARD', description, client);
 
       // 2. Send Push Notification
       const title = '🎁 Referral Reward Received!';

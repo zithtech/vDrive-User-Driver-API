@@ -41,7 +41,7 @@ export const DriverRepository = {
       const driverResult = await client.query(
         `INSERT INTO drivers (
           first_name, last_name, phone_number, alternate_contact, email, profile_pic_url, date_of_birth, gender, 
-          address, role, status, kyc, onboarding_status, documents_submitted, credit, performance, payments, is_trip_verified, language, device_id, is_vibration_enabled, total_earnings, referral_code, referred_by
+          address, role, status, kyc, onboarding_status, documents_submitted, performance, payments, is_trip_verified, language, device_id, is_vibration_enabled, total_earnings, referral_code, referred_by, subscription_eligibility
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
         RETURNING *`,
         [
@@ -61,9 +61,6 @@ export const DriverRepository = {
             : '{"overallStatus": "pending", "verifiedAt": null}',
           driverData.onboarding_status || DriverOnboardingStatus.PHONE_VERIFIED,
           driverData.documents_submitted || false,
-          driverData.credit
-            ? JSON.stringify(driverData.credit)
-            : '{"limit": 0, "balance": 0, "totalRecharged": 0, "totalUsed": 0, "lastRechargeAt": null}',
           driverData.performance
             ? JSON.stringify(driverData.performance)
             : '{"averageRating": 0, "totalTrips": 0, "cancellations": 0, "lastActive": null}',
@@ -77,6 +74,9 @@ export const DriverRepository = {
           driverData.total_earnings || 0,
           referralCode,
           referrerId,
+          driverData.subscription_eligibility
+            ? JSON.stringify(driverData.subscription_eligibility)
+            : '{"basic": true, "elite": false, "premium": false}',
         ]
       );
 
@@ -239,10 +239,6 @@ export const DriverRepository = {
         driverFields.push(`kyc = COALESCE(kyc, '{}'::jsonb) || $${paramCount++}`);
         driverValues.push(JSON.stringify(driverData.kyc));
       }
-      if (driverData.credit) {
-        driverFields.push(`credit = COALESCE(credit, '{}'::jsonb) || $${paramCount++}`);
-        driverValues.push(JSON.stringify(driverData.credit));
-      }
       if (driverData.availability) {
         driverFields.push(`availability = COALESCE(availability, '{}'::jsonb) || $${paramCount++}`);
         driverValues.push(JSON.stringify(driverData.availability));
@@ -271,6 +267,10 @@ export const DriverRepository = {
       if (driverData.payments) {
         driverFields.push(`payments = COALESCE(payments, '{}'::jsonb) || $${paramCount++}`);
         driverValues.push(JSON.stringify(driverData.payments));
+      }
+      if (driverData.subscription_eligibility) {
+        driverFields.push(`subscription_eligibility = COALESCE(subscription_eligibility, '{}'::jsonb) || $${paramCount++}`);
+        driverValues.push(JSON.stringify(driverData.subscription_eligibility));
       }
 
       if (driverFields.length > 0) {
@@ -382,6 +382,16 @@ export const DriverRepository = {
     if (driverResult.rows.length === 0) return null;
 
     const driver = driverResult.rows[0];
+    
+    // Fetch wallet balance
+    try {
+      const walletResult = await query('SELECT balance FROM driver_wallets WHERE driver_id = $1', [id]);
+      driver.wallet_balance = walletResult.rows.length > 0 ? walletResult.rows[0].balance : 0;
+    } catch (error) {
+      logger.error(`Error fetching wallet balance for driver ${id}: ${error}`);
+      driver.wallet_balance = 0;
+    }
+
     // logger.info(`Driver data fetched: ${JSON.stringify(driver)}`);
     // Get completed trips count
     try {
@@ -413,11 +423,11 @@ export const DriverRepository = {
       logger.error(`Error fetching recharges for driver ${id}: ${error}`);
     }
 
-    // Get credit usage
+    // Get wallet transactions (previously credit usage)
     let creditUsage = [];
     try {
       const creditUsageResult = await query(
-        'SELECT * FROM driver_credit_usage WHERE driver_id = $1 ORDER BY created_at DESC',
+        'SELECT id, driver_id, amount, transaction_type as type, description, created_at FROM driver_wallet_transactions WHERE driver_id = $1 ORDER BY created_at DESC',
         [id]
       );
       creditUsage = creditUsageResult.rows;
@@ -575,7 +585,9 @@ export const DriverRepository = {
       kyc_status: safeParse(driver.kyc),
       onboarding_status: driver.onboarding_status,
       documents_submitted: driver.documents_submitted,
-      credit: safeParse(driver.credit),
+      credit: { limit: 0, balance: 0, totalRecharged: 0, totalUsed: 0, lastRechargeAt: null }, // Legacy structure mocked
+      wallet_balance: parseFloat(driver.wallet_balance || '0'), // Make sure to fetch this in getDriverById! We will do a separate replace for this. Wait, I should fetch it in the findById query. But findById just does SELECT * FROM drivers. I need to get it from driver_wallets!
+      has_wallet_pin: !!driver.wallet_pin,
       recharges: recharges.map((r) => ({
         transactionId: r.id,
         amount: parseFloat(r.amount),
@@ -642,6 +654,11 @@ export const DriverRepository = {
         remarks: doc.remarks,
         verifiedAt: doc.verified_at,
       })),
+      subscription_eligibility: safeParse(driver.subscription_eligibility) || {
+        basic: true,
+        elite: false,
+        premium: false,
+      },
     };
   },
 
@@ -649,14 +666,14 @@ export const DriverRepository = {
     return this.findById(id);
   },
 
-  async findNearbyDriversExpanding(lng: number, lat: number) {
+  async findNearbyDriversExpanding(lng: number, lat: number, rideType?: string) {
     const radiusTiers = [500, 2000, 5000, 10000, 20000];
     let drivers = [];
 
     for (const radius of radiusTiers) {
       logger.info(`Searching within ${radius} meters...`);
 
-      drivers = await this.findNearbyDrivers(lng, lat, radius);
+      drivers = await this.findNearbyDrivers(lng, lat, radius, rideType);
 
       if (drivers.length > 0) {
         return {
@@ -671,8 +688,8 @@ export const DriverRepository = {
       searchedRadius: radiusTiers[radiusTiers.length - 1],
     };
   },
-  async findNearbyDrivers(lng: number, lat: number, radiusMeters: number) {
-    logger.info(`findNearbyDrivers: ${lng}, ${lat}, ${radiusMeters}`);
+  async findNearbyDrivers(lng: number, lat: number, radiusMeters: number, rideType?: string) {
+    logger.info(`findNearbyDrivers: ${lng}, ${lat}, ${radiusMeters}, ${rideType}`);
     try {
       const { getRedisClient } = require('../../shared/redis');
       const redis = getRedisClient();
@@ -692,7 +709,7 @@ export const DriverRepository = {
 
       if (!nearbyFromRedis || nearbyFromRedis.length === 0) {
         logger.info('No drivers found in Redis, falling back to PostGIS');
-        return await this.findNearbyDriversPostGIS(lng, lat, radiusMeters);
+        return await this.findNearbyDriversPostGIS(lng, lat, radiusMeters, rideType);
       }
 
       const driverIds = nearbyFromRedis.map((entry) => entry[0]);
@@ -700,21 +717,32 @@ export const DriverRepository = {
       // 2. Query Postgres to filter by availability and get driver details
       const sqlQuery = `
          SELECT
-          id,
-          first_name,
-          last_name,
-          full_name,
-          rating,
-          phone_number,
-          fcm_token,
-          availability
-      FROM drivers
-      WHERE id = ANY($1)
-        AND (availability->>'online')::boolean = true
-        AND (availability->>'status')::text IN ('ONLINE', 'HAS_UPCOMING_SCHEDULED')
-        AND status = 'active'
+          d.id,
+          d.first_name,
+          d.last_name,
+          d.full_name,
+          d.rating,
+          d.phone_number,
+          d.fcm_token,
+          d.availability
+      FROM drivers d
+      JOIN driver_subscriptions ds ON d.id = ds.driver_id
+      JOIN recharge_plans rp ON ds.plan_id = rp.id
+      WHERE d.id = ANY($1)
+        AND (d.availability->>'online')::boolean = true
+        AND (d.availability->>'status')::text IN ('ONLINE', 'HAS_UPCOMING_SCHEDULED')
+        AND d.status = 'active'
+        AND ds.status = 'active'
+        AND ds.expiry_date >= NOW()
+        AND (
+          ($2::text IN ('ONE_WAY', 'ROUND_TRIP') AND rp.plan_name IN ('Basic', 'Elite', 'Premium'))
+          OR 
+          ($2::text IN ('OUTSTATION_ONE_WAY', 'OUTSTATION_ROUND_TRIP') AND rp.plan_name IN ('Elite', 'Premium'))
+          OR 
+          $2::text IS NULL
+        )
       `;
-      const { rows } = await query(sqlQuery, [driverIds]);
+      const { rows } = await query(sqlQuery, [driverIds, rideType || null]);
 
       // 3. Combine DB details with real-time Redis coordinates
       const onlineDrivers = rows.map((dbDriver) => {
@@ -733,32 +761,43 @@ export const DriverRepository = {
       return onlineDrivers;
     } catch (error) {
       logger.error('Error finding nearby drivers via Redis, falling back to PostGIS:', error);
-      return await this.findNearbyDriversPostGIS(lng, lat, radiusMeters);
+      return await this.findNearbyDriversPostGIS(lng, lat, radiusMeters, rideType);
     }
   },
 
-  async findNearbyDriversPostGIS(lng: number, lat: number, radiusMeters: number) {
+  async findNearbyDriversPostGIS(lng: number, lat: number, radiusMeters: number, rideType?: string) {
     const sqlQuery = `
        SELECT
-        id,
-        first_name,
-        last_name,
-        full_name,
-        current_lat,
-        current_lng,
-        rating,
-        phone_number,
-        fcm_token,
-        availability,
-        ROUND(ST_Distance(location, ST_MakePoint($1, $2)::geography)::numeric, 0) as distance_meters
-    FROM drivers
-    WHERE (availability->>'online')::boolean = true
-      AND (availability->>'status')::text IN ('ONLINE', 'HAS_UPCOMING_SCHEDULED')
-      AND status = 'active'
-      AND ST_DWithin(location, ST_MakePoint($1, $2)::geography, $3)
+        d.id,
+        d.first_name,
+        d.last_name,
+        d.full_name,
+        d.current_lat,
+        d.current_lng,
+        d.rating,
+        d.phone_number,
+        d.fcm_token,
+        d.availability,
+        ROUND(ST_Distance(d.location, ST_MakePoint($1, $2)::geography)::numeric, 0) as distance_meters
+    FROM drivers d
+    JOIN driver_subscriptions ds ON d.id = ds.driver_id
+    JOIN recharge_plans rp ON ds.plan_id = rp.id
+    WHERE (d.availability->>'online')::boolean = true
+      AND (d.availability->>'status')::text IN ('ONLINE', 'HAS_UPCOMING_SCHEDULED')
+      AND d.status = 'active'
+      AND ds.status = 'active'
+      AND ds.expiry_date >= NOW()
+      AND ST_DWithin(d.location, ST_MakePoint($1, $2)::geography, $3)
+      AND (
+        ($4::text IN ('ONE_WAY', 'ROUND_TRIP') AND rp.plan_name IN ('Basic', 'Elite', 'Premium'))
+        OR 
+        ($4::text IN ('OUTSTATION_ONE_WAY', 'OUTSTATION_ROUND_TRIP') AND rp.plan_name IN ('Elite', 'Premium'))
+        OR 
+        $4::text IS NULL
+      )
     ORDER BY distance_meters ASC;
     `;
-    const { rows } = await query(sqlQuery, [lng, lat, radiusMeters]);
+    const { rows } = await query(sqlQuery, [lng, lat, radiusMeters, rideType || null]);
     return rows;
   },
 
@@ -812,15 +851,16 @@ export const DriverRepository = {
   },
 
   /**
-   * Atomically add credit balance to a driver's wallet/JSONB field
-   * and record the transaction in driver_credit_usage.
+   * Atomically add balance to a driver's wallet
+   * and record the transaction.
    */
-  async addCredit(
+  async addToWallet(
     driverId: string,
     amount: number,
     type: string,
     description: string,
-    externalClient?: any
+    externalClient?: any,
+    referenceId?: string
   ): Promise<void> {
     const client = externalClient || (await getClient());
     const shouldRelease = !externalClient;
@@ -829,34 +869,36 @@ export const DriverRepository = {
     try {
       if (shouldTransact) await client.query('BEGIN');
 
-      // 1. Update the JSONB credit field atomically
+      // 1. Upsert the wallet balance
       const updateSql = `
-        UPDATE drivers 
-        SET credit = jsonb_set(
-          jsonb_set(
-            COALESCE(credit, '{"limit": 0, "balance": 0, "totalRecharged": 0, "totalUsed": 0, "lastRechargeAt": null}'::jsonb), 
-            '{balance}', 
-            (COALESCE((credit->>'balance')::numeric, 0) + $1)::text::jsonb
-          ),
-          '{totalRecharged}', 
-          (COALESCE((credit->>'totalRecharged')::numeric, 0) + $1)::text::jsonb
-        ),
-        updated_at = NOW() 
-        WHERE id = $2
+        INSERT INTO driver_wallets (driver_id, balance, created_at, updated_at)
+        VALUES ($2, $1, NOW(), NOW())
+        ON CONFLICT (driver_id) 
+        DO UPDATE SET 
+            balance = driver_wallets.balance + EXCLUDED.balance,
+            updated_at = NOW()
       `;
       await client.query(updateSql, [amount, driverId]);
 
-      // 2. Record the transaction in credit usage table
-      const usageSql = `
-        INSERT INTO driver_credit_usage (driver_id, amount, type, description, created_at)
-        VALUES ($1, $2, $3, $4, NOW())
+      // 1.5 Sync to drivers table
+      const syncSql = `
+        UPDATE drivers
+        SET wallet_balance = COALESCE(wallet_balance, 0) + $1
+        WHERE id = $2
       `;
-      await client.query(usageSql, [driverId, amount, type, description]);
+      await client.query(syncSql, [amount, driverId]);
+
+      // 2. Record the transaction
+      const usageSql = `
+        INSERT INTO driver_wallet_transactions (driver_id, amount, transaction_type, description, reference_id, created_at)
+        VALUES ($1, $2, $3, $4, $5, NOW())
+      `;
+      await client.query(usageSql, [driverId, amount, type, description, referenceId || null]);
 
       if (shouldTransact) await client.query('COMMIT');
     } catch (error) {
       if (shouldTransact) await client.query('ROLLBACK');
-      logger.error(`Error adding credit to driver ${driverId}:`, error);
+      logger.error(`Error adding to wallet for driver ${driverId}:`, error);
       throw error;
     } finally {
       if (shouldRelease) client.release();
@@ -864,9 +906,9 @@ export const DriverRepository = {
   },
 
   /**
-   * Atomically deduct credit balance from a driver's wallet.
+   * Atomically deduct balance from a driver's wallet.
    */
-  async deductCredit(
+  async deductFromWallet(
     driverId: string,
     amount: number,
     type: string,
@@ -880,30 +922,30 @@ export const DriverRepository = {
     try {
       if (shouldTransact) await client.query('BEGIN');
 
-      // 1. Update the JSONB credit field atomically
+      // 1. Update the wallet balance (only if sufficient)
       const updateSql = `
-        UPDATE drivers 
-        SET credit = jsonb_set(
-          jsonb_set(
-            COALESCE(credit, '{"limit": 0, "balance": 0, "totalRecharged": 0, "totalUsed": 0, "lastRechargeAt": null}'::jsonb), 
-            '{balance}', 
-            (COALESCE((credit->>'balance')::numeric, 0) - $1)::text::jsonb
-          ),
-          '{totalUsed}', 
-          (COALESCE((credit->>'totalUsed')::numeric, 0) + $1)::text::jsonb
-        ),
-        updated_at = NOW() 
-        WHERE id = $2 AND (credit->>'balance')::numeric >= $1
+        UPDATE driver_wallets 
+        SET balance = balance - $1,
+            updated_at = NOW() 
+        WHERE driver_id = $2 AND balance >= $1
       `;
       const result = await client.query(updateSql, [amount, driverId]);
 
       if (result.rowCount === 0) {
-        throw new Error('Insufficient credit balance');
+        throw new Error('Insufficient wallet balance');
       }
 
-      // 2. Record the transaction in credit usage table
+      // 1.5 Sync to drivers table
+      const syncSql = `
+        UPDATE drivers
+        SET wallet_balance = COALESCE(wallet_balance, 0) - $1
+        WHERE id = $2
+      `;
+      await client.query(syncSql, [amount, driverId]);
+
+      // 2. Record the transaction
       const usageSql = `
-        INSERT INTO driver_credit_usage (driver_id, amount, type, description, created_at)
+        INSERT INTO driver_wallet_transactions (driver_id, amount, transaction_type, description, created_at)
         VALUES ($1, $2, $3, $4, NOW())
       `;
       await client.query(usageSql, [driverId, -amount, type, description]);
@@ -911,7 +953,7 @@ export const DriverRepository = {
       if (shouldTransact) await client.query('COMMIT');
     } catch (error) {
       if (shouldTransact) await client.query('ROLLBACK');
-      logger.error(`Error deducting credit from driver ${driverId}:`, error);
+      logger.error(`Error deducting from wallet for driver ${driverId}:`, error);
       throw error;
     } finally {
       if (shouldRelease) client.release();
