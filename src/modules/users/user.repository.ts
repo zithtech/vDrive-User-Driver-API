@@ -1,6 +1,7 @@
 // src/modules/users/user.repository.ts
 import { query } from '../../shared/database';
 import { User } from './user.model';
+import { generateOTP } from '../../utilities/helper';
 
 export const UserRepository = {
   async findAllWithFilters(
@@ -54,7 +55,7 @@ export const UserRepository = {
           data.email,
           data.device_id,
           data.onboarding_status,
-          data.otp || '0000',
+          data.otp || generateOTP(),
         ]
       );
       return result.rows[0] || null;
