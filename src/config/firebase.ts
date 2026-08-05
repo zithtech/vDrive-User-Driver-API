@@ -82,7 +82,7 @@ const buildMessage = (fcmToken: string, payload: NotificationPayload): admin.mes
     // over display and deduplication (prevents Android auto-display).
     ...(!isRideType && {
       notification: {
-        title: payload.title || 'vDrive Alert',
+        title: payload.title || 'T2Drive Alert',
         body: payload.body || 'Tap to view details',
       },
     }),
@@ -90,7 +90,7 @@ const buildMessage = (fcmToken: string, payload: NotificationPayload): admin.mes
     data: {
       type: payload.type || 'default',
       // Always pass title/body in data so the app can display via notifee
-      title: payload.title || 'vDrive Alert',
+      title: payload.title || 'T2Drive Alert',
       body: payload.body || 'Tap to view details',
       ...(payload.data ?? {}),
     },

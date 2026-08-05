@@ -48,4 +48,7 @@ export interface User {
   notes?: string;
   rating?: number;
   total_trips?: number;
+  wallet_balance?: number;
+  wallet_pin?: string;
+  has_wallet_pin?: boolean;
 }

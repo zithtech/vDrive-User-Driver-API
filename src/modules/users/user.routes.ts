@@ -70,4 +70,12 @@ router.post('/update-fcm-token', UserController.updateToken);
 
 router.delete('/documents/:userid/delete', UserController.deleteDocument);
 
+// ─────────── USER WALLET ───────────
+router.get('/wallet/:id/balance', UserController.getWalletBalance);
+router.get('/wallet/:id/transactions', UserController.getWalletTransactions);
+router.post('/wallet/:id/setup-pin', UserController.setupWalletPin);
+router.post('/wallet/:id/topup/order', UserController.createWalletTopupOrder);
+router.post('/wallet/:id/topup/verify', UserController.verifyWalletTopupPayment);
+router.post('/wallet/:id/pay-trip', UserController.payTripWithWallet);
+
 export default router;

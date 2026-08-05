@@ -2,6 +2,7 @@ import { UserRepository } from './user.repository';
 import { ReferralRepository } from '../referrals/referral.repository';
 import { User } from '../users/user.model';
 import { UserStatus } from '../../enums/user.enums';
+import bcrypt from 'bcrypt';
 import admin from '../../config/firebase';
 import { ReferralController } from '../referrals/referral.controller';
 import { ReferralService } from '../referrals/referral.service';
@@ -166,5 +167,21 @@ export const UserService = {
     } catch (error) {
       logger.error('❌ Firebase delivery failed:', error);
     }
+  },
+
+  async setupWalletPin(userId: string, pin: string) {
+    if (!pin || pin.length !== 4) {
+      throw { statusCode: 400, message: 'PIN must be exactly 4 digits' };
+    }
+    const hashedPin = await bcrypt.hash(pin, 10);
+    await UserRepository.setupWalletPin(userId, hashedPin);
+    return { success: true };
+  },
+
+  async verifyWalletPin(userId: string, pin: string): Promise<boolean> {
+    if (!pin) return false;
+    const user = await UserRepository.findById(userId, UserStatus.ACTIVE);
+    if (!user || !user.wallet_pin) return false;
+    return await bcrypt.compare(pin, user.wallet_pin);
   },
 };

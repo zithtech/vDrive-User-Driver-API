@@ -1,7 +1,8 @@
 // src/modules/users/user.repository.ts
-import { query } from '../../shared/database';
+import { query, getClient } from '../../shared/database';
 import { User } from './user.model';
 import { generateOTP } from '../../utilities/helper';
+import { logger } from '../../shared/logger';
 
 export const UserRepository = {
   async findAllWithFilters(
@@ -133,5 +134,114 @@ export const UserRepository = {
 
   async incrementStats(id: string): Promise<void> {
     await query(`UPDATE users SET total_trips = COALESCE(total_trips, 0) + 1 WHERE id = $1`, [id]);
+  },
+
+  async addToWallet(
+    userId: string,
+    amount: number,
+    type: string,
+    description: string,
+    externalClient?: any,
+    referenceId?: string
+  ): Promise<void> {
+    const client = externalClient || (await getClient());
+    const shouldRelease = !externalClient;
+    const shouldTransact = !externalClient;
+
+    try {
+      if (shouldTransact) await client.query('BEGIN');
+
+      const updateSql = `
+        INSERT INTO user_wallets (user_id, balance, created_at, updated_at)
+        VALUES ($2, $1, NOW(), NOW())
+        ON CONFLICT (user_id) 
+        DO UPDATE SET 
+            balance = user_wallets.balance + EXCLUDED.balance,
+            updated_at = NOW()
+      `;
+      await client.query(updateSql, [amount, userId]);
+
+      const syncSql = `
+        UPDATE users
+        SET wallet_balance = COALESCE(wallet_balance, 0) + $1
+        WHERE id = $2
+      `;
+      await client.query(syncSql, [amount, userId]);
+
+      const usageSql = `
+        INSERT INTO user_wallet_transactions (user_id, amount, transaction_type, description, reference_id, created_at)
+        VALUES ($1, $2, $3, $4, $5, NOW())
+      `;
+      await client.query(usageSql, [userId, amount, type, description, referenceId || null]);
+
+      if (shouldTransact) await client.query('COMMIT');
+    } catch (error) {
+      if (shouldTransact) await client.query('ROLLBACK');
+      logger.error(`Error adding to wallet for user ${userId}:`, error);
+      throw error;
+    } finally {
+      if (shouldRelease) client.release();
+    }
+  },
+
+  async deductFromWallet(
+    userId: string,
+    amount: number,
+    type: string,
+    description: string,
+    externalClient?: any
+  ): Promise<void> {
+    const client = externalClient || (await getClient());
+    const shouldRelease = !externalClient;
+    const shouldTransact = !externalClient;
+
+    try {
+      if (shouldTransact) await client.query('BEGIN');
+
+      const updateSql = `
+        UPDATE user_wallets 
+        SET balance = balance - $1,
+            updated_at = NOW() 
+        WHERE user_id = $2 AND balance >= $1
+      `;
+      const result = await client.query(updateSql, [amount, userId]);
+
+      if (result.rowCount === 0) {
+        throw new Error('Insufficient wallet balance');
+      }
+
+      const syncSql = `
+        UPDATE users
+        SET wallet_balance = COALESCE(wallet_balance, 0) - $1
+        WHERE id = $2
+      `;
+      await client.query(syncSql, [amount, userId]);
+
+      const usageSql = `
+        INSERT INTO user_wallet_transactions (user_id, amount, transaction_type, description, created_at)
+        VALUES ($1, $2, $3, $4, NOW())
+      `;
+      await client.query(usageSql, [userId, -amount, type, description]);
+
+      if (shouldTransact) await client.query('COMMIT');
+    } catch (error) {
+      if (shouldTransact) await client.query('ROLLBACK');
+      logger.error(`Error deducting from wallet for user ${userId}:`, error);
+      throw error;
+    } finally {
+      if (shouldRelease) client.release();
+    }
+  },
+
+  async setupWalletPin(userId: string, hashedPin: string): Promise<void> {
+    await query('UPDATE users SET wallet_pin = $1 WHERE id = $2', [hashedPin, userId]);
+  },
+
+  async getWalletTransactions(userId: string): Promise<any[]> {
+    const result = await query(
+      'SELECT id, user_id, amount, transaction_type as type, description, reference_id, created_at FROM user_wallet_transactions WHERE user_id = $1 ORDER BY created_at DESC',
+      [userId]
+    );
+    return result.rows;
   },
 };
