@@ -198,7 +198,7 @@ export const TripSchedulerService = {
 
           if (isWakeup && trip.user_phone) {
             const { TwilioService } = require('../notifications/twilio.service');
-            await TwilioService.placeWakeupCall(trip.user_phone, `This is a wakeup call from vDrive. Your scheduled ride starts in 45 minutes at ${trip.pickup_address}`);
+            await TwilioService.placeWakeupCall(trip.user_phone, `This is a wakeup call from T2Drive. Your scheduled ride starts in 45 minutes at ${trip.pickup_address}`);
           }
 
           logger.info(`Successfully sent ${reminderKey} reminder for trip ${trip.trip_id} to user ${trip.user_id}`);
