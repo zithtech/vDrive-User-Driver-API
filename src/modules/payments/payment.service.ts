@@ -157,12 +157,40 @@ export const PaymentService = {
           return true;
         }
 
+        let paymentMethodStr = 'Razorpay';
+        try {
+          const payment = await razorpay.payments.fetch(razorpay_payment_id);
+          if (payment) {
+            if (payment.method === 'upi') {
+              let appName = 'UPI';
+              if (payment.vpa) {
+                const vpa = payment.vpa.toLowerCase();
+                if (vpa.includes('@ybl') || vpa.includes('@ibl')) appName = 'PhonePe';
+                else if (vpa.includes('@ok') || vpa.includes('@gpay')) appName = 'Google Pay';
+                else if (vpa.includes('@paytm')) appName = 'Paytm';
+                else if (vpa.includes('@amazon')) appName = 'Amazon Pay';
+              }
+              paymentMethodStr = `UPI • ${appName}`;
+            } else if (payment.method === 'card') {
+              paymentMethodStr = 'Card';
+            } else if (payment.method === 'netbanking') {
+              paymentMethodStr = `Netbanking • ${payment.bank || 'Bank'}`;
+            } else if (payment.method === 'wallet') {
+              paymentMethodStr = `Wallet • ${payment.wallet || 'App'}`;
+            } else {
+              paymentMethodStr = payment.method || 'Razorpay';
+            }
+          }
+        } catch (e: any) {
+          logger.error(`Error fetching payment details from Razorpay: ${e.message}`);
+        }
+
         // Add to wallet
         await DriverRepository.addToWallet(
           driverId,
           amount,
           'TOPUP',
-          `Topup via Razorpay: ${razorpay_order_id}`,
+          `Topup via ${paymentMethodStr} [${razorpay_order_id}][${razorpay_payment_id}]`,
           undefined,
           razorpay_order_id
         );

@@ -127,6 +127,17 @@ export const SubscriptionController = {
     }
   },
 
+  async getSubscriptionHistory(req: any, res: Response, next: NextFunction) {
+    try {
+      const driverId = req.user.id;
+      const history = await SubscriptionService.getSubscriptionHistory(driverId);
+      return successResponse(res, 200, 'Subscription history fetched successfully', history);
+    } catch (error: any) {
+      logger.error(`Error in getSubscriptionHistory: ${error.message}`);
+      next(error);
+    }
+  },
+
   // ─── New: Razorpay Webhook (Public, No Auth) ────────────────────────
   async handleRazorpayWebhook(req: Request, res: Response) {
     try {

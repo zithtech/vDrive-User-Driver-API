@@ -351,16 +351,41 @@ export const DriverController = {
       const driverId = req.params.id as string;
       const driver = await DriverService.getDriverById(driverId);
       
-      const transactions = (driver.creditUsage || []).map((u: any) => ({
-        id: u.usageId,
-        type: u.type || (u.amount > 0 ? 'WALLET_TOPUP' : 'WITHDRAW'),
-        title: u.description || (u.amount > 0 ? 'Wallet Topup' : 'Wallet Deduction'),
-        date: new Date(u.createdAt).toLocaleDateString(),
-        time: new Date(u.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        amount: Number(u.amount),
-        status: 'Completed',
-        createdAt: u.createdAt,
-      }));
+      const transactions = (driver.creditUsage || []).map((u: any) => {
+        let paymentMethod;
+        let orderId = u.referenceId || null;
+        let paymentId = null;
+        const desc = u.description || '';
+        
+        // Extract order/payment ids from description if present
+        const match = desc.match(/\[(.*?)\]\[(.*?)\]/);
+        if (match) {
+           orderId = match[1];
+           paymentId = match[2];
+        }
+
+        let cleanDesc = desc.replace(/\[.*?\]\[.*?\]/, '').trim();
+        if (cleanDesc.toLowerCase().includes('via')) {
+          paymentMethod = cleanDesc.split(/via/i)[1].trim();
+          if (paymentMethod.includes(':')) {
+            paymentMethod = paymentMethod.split(':')[0].trim();
+          }
+        }
+
+        return {
+          id: u.usageId,
+          type: u.type || (u.amount > 0 ? 'WALLET_TOPUP' : 'WITHDRAW'),
+          title: cleanDesc || (u.amount > 0 ? 'Wallet Topup' : 'Wallet Deduction'),
+          date: new Date(u.createdAt).toLocaleDateString(),
+          time: new Date(u.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          amount: Number(u.amount),
+          status: 'Completed',
+          paymentMethod,
+          orderId,
+          paymentId,
+          createdAt: u.createdAt,
+        };
+      });
 
       transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 

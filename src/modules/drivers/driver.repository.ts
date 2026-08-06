@@ -427,7 +427,7 @@ export const DriverRepository = {
     let creditUsage = [];
     try {
       const creditUsageResult = await query(
-        'SELECT id, driver_id, amount, transaction_type as type, description, created_at FROM driver_wallet_transactions WHERE driver_id = $1 ORDER BY created_at DESC',
+        'SELECT id, driver_id, amount, transaction_type as type, description, reference_id, created_at FROM driver_wallet_transactions WHERE driver_id = $1 ORDER BY created_at DESC',
         [id]
       );
       creditUsage = creditUsageResult.rows;
@@ -602,6 +602,7 @@ export const DriverRepository = {
         amount: parseFloat(cu.amount),
         type: cu.type,
         description: cu.description || '',
+        referenceId: cu.reference_id || '',
         createdAt: cu.created_at,
       })),
       activityLogs: activityLogs.map((log) => ({
