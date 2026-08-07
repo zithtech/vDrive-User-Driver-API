@@ -549,12 +549,13 @@ export const TripRepository = {
   async getStatsByDriverId(driverId: string): Promise<any> {
     const result = await query(
       `SELECT 
-        COUNT(*) as total_trips,
-        COUNT(CASE WHEN trip_status = 'COMPLETED' THEN 1 END) as completed_trips,
-        COUNT(CASE WHEN trip_status = 'CANCELLED' THEN 1 END) as cancelled_trips,
-        SUM(CASE WHEN trip_status = 'COMPLETED' THEN total_fare ELSE 0 END) as total_earnings
+        COUNT(CASE WHEN driver_id = $1 THEN 1 END) as accepted_trips,
+        COUNT(CASE WHEN rejected_drivers @> to_jsonb($1::text) THEN 1 END) as rejected_trips,
+        COUNT(CASE WHEN driver_id = $1 AND trip_status = 'COMPLETED' THEN 1 END) as completed_trips,
+        COUNT(CASE WHEN driver_id = $1 AND trip_status = 'CANCELLED' THEN 1 END) as cancelled_trips,
+        SUM(CASE WHEN driver_id = $1 AND trip_status = 'COMPLETED' THEN total_fare ELSE 0 END) as total_earnings
       FROM trips 
-      WHERE driver_id = $1`,
+      WHERE driver_id = $1 OR rejected_drivers @> to_jsonb($1::text)`,
       [driverId]
     );
     return result.rows[0];

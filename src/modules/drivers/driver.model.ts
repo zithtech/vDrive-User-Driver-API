@@ -78,6 +78,9 @@ export interface Performance {
   totalTrips: number;
   cancellations: number;
   lastActive: string | null;
+  performance_score_monthly?: number;
+  performance_score_weekly?: number;
+  overall_score?: number;
 }
 
 export interface Payments {
@@ -107,6 +110,7 @@ export interface Driver {
   full_name?: string;
   phone_number: string;
   alternate_contact?: string;
+  trusted_contact?: { name: string; number: string; relation_type: string };
   email: string;
   profilePicUrl?: string;
   profile_picture?: string;
@@ -166,6 +170,7 @@ export interface CreateDriverInput {
   full_name: string;
   phone_number: string;
   alternate_contact?: string;
+  trusted_contact?: { name: string; number: string; relation_type: string };
   email: string;
   profilePicUrl?: string;
   date_of_birth: string;

@@ -2,7 +2,8 @@ import { DriverStatus, Address, CreateDriverInput } from './driver.model';
 // src/modules/drivers/driver.controller.ts
 import { Request, Response, NextFunction } from 'express';
 import { DriverService } from './driver.service';
-import { successResponse } from '../../shared/errorHandler';
+import { DriverRepository } from './driver.repository';
+import { successResponse, errorResponse } from '../../shared/errorHandler';
 import { Server } from 'socket.io';
 import { logger } from '../../shared/logger';
 import { TripRepository } from '../trip/trip.repository';
@@ -267,16 +268,48 @@ export const DriverController = {
       const stats = await TripRepository.getStatsByDriverId(driverId);
       const onlineHours = await DriverService.getOnlineHours(driverId);
 
+      const acceptedTrips = parseInt(stats.accepted_trips || '0');
+      const rejectedTrips = parseInt(stats.rejected_trips || '0');
+      const cancelledTrips = parseInt(stats.cancelled_trips || '0');
+      const completedTrips = parseInt(stats.completed_trips || '0');
+      
+      const totalOfferedTrips = acceptedTrips + rejectedTrips;
+      const acceptanceRate = totalOfferedTrips > 0 ? (acceptedTrips / totalOfferedTrips) * 100 : 0;
+      
+      const totalTrips = acceptedTrips;
+
       const performance = {
         rating: driver.performance?.averageRating ?? (driver.rating !== undefined && driver.rating !== null ? driver.rating : 4.8),
-        acceptanceRate: 98,
-        cancellationRate:
-          stats.cancelled_trips > 0 ? (stats.cancelled_trips / stats.total_trips) * 100 : 2,
-        totalTrips: stats.total_trips || 0,
+        acceptanceRate: Math.round(acceptanceRate),
+        cancellationRate: totalTrips > 0 ? (cancelledTrips / totalTrips) * 100 : 0,
+        totalTrips: totalTrips,
         onlineHours,
+        performance_score_monthly: driver.performance?.performance_score_monthly ?? null,
+        performance_score_weekly: driver.performance?.performance_score_weekly ?? null,
+        overall_score: driver.performance?.overall_score ?? null,
       };
 
       return successResponse(res, 200, 'Performance metrics fetched successfully', performance);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updatePerformancePercentile(req: Request, res: Response, next: NextFunction) {
+    try {
+      const driverId = req.params.id as string;
+      const { score, timeframe } = req.body;
+
+      if (typeof score !== 'number' || score < 0 || score > 100) {
+        return errorResponse(res, 400, 'Invalid score provided');
+      }
+
+      const validTimeframe = timeframe === 'week' ? 'week' : 'month';
+
+      await DriverRepository.updatePerformanceScore(driverId, score, validTimeframe);
+      const percentile = await DriverRepository.calculatePercentile(score, validTimeframe);
+
+      return successResponse(res, 200, 'Percentile calculated successfully', { percentile });
     } catch (err) {
       next(err);
     }

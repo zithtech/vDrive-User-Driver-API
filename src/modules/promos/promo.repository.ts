@@ -18,15 +18,17 @@ export const PromoRepository = {
   async findAvailableForDriver(driverId: string, client?: any): Promise<Promo[]> {
     const q = client ? client.query.bind(client) : query;
     const result = await q(
-      `SELECT * FROM promos 
-       WHERE is_active = true 
-       AND (expiry_date IS NULL OR expiry_date > NOW())
-       AND (start_date <= NOW())
+      `SELECT p.* FROM promos p
+       WHERE p.is_active = true 
+       AND (p.expiry_date IS NULL OR p.expiry_date > NOW())
+       AND (p.start_date <= NOW())
        AND (
-         target_type = 'global' OR 
-         (target_type = 'specific_driver' AND target_driver_id = $1) OR
-         (target_type = 'ride_count_based')
-       )`,
+         p.target_type = 'global' OR 
+         (p.target_type = 'specific_driver' AND p.target_driver_id = $1) OR
+         (p.target_type = 'ride_count_based')
+       )
+       AND COALESCE((SELECT COUNT(*) FROM promo_usage pu WHERE pu.promo_id = p.id AND pu.driver_id = $1), 0) < p.max_uses_per_driver
+       AND (p.max_uses IS NULL OR COALESCE((SELECT COUNT(*) FROM promo_usage pu WHERE pu.promo_id = p.id), 0) < p.max_uses)`,
       [driverId]
     );
     return result.rows || [];

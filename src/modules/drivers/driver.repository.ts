@@ -40,15 +40,16 @@ export const DriverRepository = {
       // Insert driver
       const driverResult = await client.query(
         `INSERT INTO drivers (
-          first_name, last_name, phone_number, alternate_contact, email, profile_pic_url, date_of_birth, gender, 
+          first_name, last_name, phone_number, alternate_contact, trusted_contact, email, profile_pic_url, date_of_birth, gender, 
           address, role, status, kyc, onboarding_status, documents_submitted, performance, payments, is_trip_verified, language, device_id, is_vibration_enabled, total_earnings, referral_code, referred_by, subscription_eligibility
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
         RETURNING *`,
         [
           driverData.first_name,
           driverData.last_name,
           driverData.phone_number,
           driverData.alternate_contact || null,
+          driverData.trusted_contact ? JSON.stringify(driverData.trusted_contact) : null,
           driverData.email,
           driverData.profilePicUrl || null,
           driverData.date_of_birth,
@@ -231,6 +232,10 @@ export const DriverRepository = {
       if (driverData.referred_by) {
         driverFields.push(`referred_by = $${paramCount++}`);
         driverValues.push(driverData.referred_by);
+      }
+      if (driverData.trusted_contact) {
+        driverFields.push(`trusted_contact = $${paramCount++}`);
+        driverValues.push(JSON.stringify(driverData.trusted_contact));
       }
 
       // JSONB updates using merge operator ||
@@ -631,6 +636,9 @@ export const DriverRepository = {
           totalTrips: perf.totalTrips !== undefined ? perf.totalTrips : (driver.total_trips || 0),
           cancellations: perf.cancellations || 0,
           lastActive: perf.lastActive || null,
+          performance_score_monthly: driver.performance_score_monthly,
+          performance_score_weekly: driver.performance_score_weekly,
+          overall_score: driver.performance_score,
         };
       })(),
       payments: safeParse(driver.payments),
@@ -960,4 +968,28 @@ export const DriverRepository = {
       if (shouldRelease) client.release();
     }
   },
+
+  async updatePerformanceScore(driverId: string, score: number, timeframe: 'week' | 'month' = 'month'): Promise<void> {
+    const column = timeframe === 'week' ? 'performance_score_weekly' : 'performance_score_monthly';
+    const sql = `UPDATE drivers SET ${column} = $1, updated_at = NOW() WHERE id = $2;`;
+    await query(sql, [score, driverId]);
+  },
+
+  async calculatePercentile(score: number, timeframe: 'week' | 'month' = 'month'): Promise<number> {
+    const column = timeframe === 'week' ? 'performance_score_weekly' : 'performance_score_monthly';
+    const sql = `
+      SELECT 
+        COUNT(*) as total_count,
+        COUNT(CASE WHEN ${column} <= $1 THEN 1 END) as below_count
+      FROM drivers 
+      WHERE ${column} IS NOT NULL;
+    `;
+    const result = await query(sql, [score]);
+    const { total_count, below_count } = result.rows[0];
+    
+    if (total_count === 0) return 100; // If you're the first driver, you're top 100%
+    
+    const percentile = Math.round((below_count / total_count) * 100);
+    return percentile;
+  }
 };
