@@ -233,9 +233,9 @@ export const DriverRepository = {
         driverFields.push(`referred_by = $${paramCount++}`);
         driverValues.push(driverData.referred_by);
       }
-      if (driverData.trusted_contact) {
+      if (driverData.trusted_contact !== undefined) {
         driverFields.push(`trusted_contact = $${paramCount++}`);
-        driverValues.push(JSON.stringify(driverData.trusted_contact));
+        driverValues.push(driverData.trusted_contact ? JSON.stringify(driverData.trusted_contact) : null);
       }
 
       // JSONB updates using merge operator ||
