@@ -652,7 +652,11 @@ export const AuthService = {
       const newAccessToken = jwt.sign(payload, config.jwt.secret, accessTokenOptions);
 
       return newAccessToken;
-    } catch (error) {
+    } catch (error: any) {
+      if (error.statusCode) {
+        throw error;
+      }
+      logger.error(`Error in refreshAccessToken: ${error.message || error}`);
       throw { statusCode: 401, message: 'Invalid or expired refresh token' };
     }
   },

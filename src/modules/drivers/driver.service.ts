@@ -514,11 +514,17 @@ export const DriverService = {
       throw { statusCode: 404, message: 'Driver not found' };
     }
 
-    // Get today's date boundaries in UTC
+    // Get today's and yesterday's date boundaries in UTC
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
+
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+    
+    const yesterdayEnd = new Date(todayEnd);
+    yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
 
     // 1. Calculate online minutes today
     // Closed sessions today
@@ -586,6 +592,39 @@ export const DriverService = {
     const mins = Math.round(totalMinutes % 60);
     const onlineFormatted = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 
+    // 4. Calculate yesterday's stats for trends
+    const yesterdayClosedSessions = await query(
+      `SELECT COALESCE(SUM(duration_minutes), 0) as total_minutes
+       FROM driver_online_sessions 
+       WHERE driver_id = $1 
+         AND went_online_at >= $2 
+         AND went_online_at <= $3`,
+      [driverId, yesterdayStart, yesterdayEnd]
+    );
+    const yesterdayTotalMinutes = parseFloat(yesterdayClosedSessions.rows[0]?.total_minutes || 0);
+
+    const yesterdayTripStats = await query(
+      `SELECT 
+         COUNT(*) FILTER (WHERE trip_status = 'COMPLETED') as trips_completed,
+         COALESCE(SUM(total_fare) FILTER (WHERE trip_status = 'COMPLETED'), 0) as total_earnings
+       FROM trips 
+       WHERE driver_id = $1 
+         AND created_at >= $2 
+         AND created_at <= $3`,
+      [driverId, yesterdayStart, yesterdayEnd]
+    );
+    const yesterdayTripsCompleted = parseInt(yesterdayTripStats.rows[0]?.trips_completed || 0);
+    const yesterdayTotalEarnings = parseFloat(yesterdayTripStats.rows[0]?.total_earnings || 0);
+
+    const calculateTrend = (today: number, yesterday: number) => {
+      if (yesterday === 0) return today > 0 ? 100 : 0;
+      return parseFloat((((today - yesterday) / yesterday) * 100).toFixed(1));
+    };
+
+    const earningsTrend = calculateTrend(totalEarnings, yesterdayTotalEarnings);
+    const ridesTrend = calculateTrend(tripsCompleted, yesterdayTripsCompleted);
+    const onlineTrend = calculateTrend(totalMinutes, yesterdayTotalMinutes);
+
     return {
       onlineMinutes: Math.round(totalMinutes),
       onlineFormatted,
@@ -595,6 +634,9 @@ export const DriverService = {
       yearsActive: yearsActive || 0.1, // Default 0.1 for better UX if newly joined
       currentlyOnline,
       currentSessionStart,
+      earningsTrend,
+      ridesTrend,
+      onlineTrend,
     };
   },
 
