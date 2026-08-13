@@ -273,4 +273,155 @@ export const UserController = {
       next(err);
     }
   },
+
+  /* ─────────── USER WALLET ─────────── */
+
+  async getWalletBalance(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.params.id as string;
+      const user = await UserRepository.findById(userId, 'active');
+      return successResponse(res, 200, 'Wallet balance fetched successfully', {
+        balance: parseFloat(String(user?.wallet_balance || 0)),
+        currency: 'INR',
+        has_wallet_pin: !!(user as any)?.wallet_pin,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getWalletTransactions(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.params.id as string;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const transactions = await UserRepository.getWalletTransactions(userId);
+      const mapped = transactions.slice(0, limit).map((t: any) => ({
+        id: t.id,
+        type: t.type || (Number(t.amount) > 0 ? 'WALLET_TOPUP' : 'DEBIT'),
+        title: t.description || (Number(t.amount) > 0 ? 'Wallet Top-up' : 'Trip Payment'),
+        date: new Date(t.created_at).toLocaleDateString('en-IN'),
+        time: new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        amount: Number(t.amount),
+        status: 'Completed',
+        reference_id: t.reference_id,
+        createdAt: t.created_at,
+      }));
+      return successResponse(res, 200, 'Wallet transactions fetched successfully', mapped);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async setupWalletPin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.params.id as string;
+      const { pin } = req.body;
+      await UserService.setupWalletPin(userId, pin);
+      return successResponse(res, 200, 'Wallet PIN setup successfully', { success: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async createWalletTopupOrder(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.params.id as string;
+      const { amount } = req.body;
+      if (!amount || Number(amount) <= 0) throw new Error('Invalid amount');
+
+      const Razorpay = require('razorpay');
+      const razorpay = new Razorpay({
+        key_id: process.env.RAZORPAY_KEY_ID,
+        key_secret: process.env.RAZORPAY_KEY_SECRET,
+      });
+
+      const options = {
+        amount: Math.round(Number(amount) * 100),
+        currency: 'INR',
+        receipt: `uwallet_${userId.substring(0, 8)}_${Date.now()}`,
+      };
+
+      const order = await razorpay.orders.create(options);
+      return successResponse(res, 200, 'Order created successfully', order);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async verifyWalletTopupPayment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.params.id as string;
+      const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount } = req.body;
+
+      const crypto = require('crypto');
+      const secret = process.env.RAZORPAY_KEY_SECRET as string;
+      const generated_signature = crypto
+        .createHmac('sha256', secret)
+        .update(razorpay_order_id + '|' + razorpay_payment_id)
+        .digest('hex');
+
+      if (generated_signature !== razorpay_signature) {
+        return res.status(400).json({ success: false, message: 'Invalid payment signature' });
+      }
+
+      // Prevent duplicate processing
+      const { query: dbQuery } = require('../../shared/database');
+      const existing = await dbQuery(
+        'SELECT id FROM user_wallet_transactions WHERE reference_id = $1',
+        [razorpay_order_id]
+      );
+      if (existing.rows.length > 0) {
+        logger.info(`User wallet topup already processed for order: ${razorpay_order_id}`);
+        return successResponse(res, 200, 'Payment already processed', { success: true });
+      }
+
+      await UserRepository.addToWallet(
+        userId,
+        Number(amount),
+        'WALLET_TOPUP',
+        `Top-up via Razorpay: ${razorpay_order_id}`,
+        undefined,
+        razorpay_order_id
+      );
+
+      return successResponse(res, 200, 'Payment verified and wallet credited', { success: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async payTripWithWallet(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.params.id as string;
+      const { amount, pin, trip_id, description } = req.body;
+
+      if (!pin) {
+        return res.status(400).json({ success: false, message: 'Wallet PIN is required' });
+      }
+
+      const isValidPin = await UserService.verifyWalletPin(userId, pin);
+      if (!isValidPin) {
+        return res.status(401).json({ success: false, message: 'Invalid Wallet PIN' });
+      }
+
+      const user = await UserRepository.findById(userId, 'active');
+      if (!user || Number(user.wallet_balance || 0) < Number(amount)) {
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient wallet balance. Need ₹${amount}, have ₹${user?.wallet_balance || 0}`,
+        });
+      }
+
+      await UserRepository.deductFromWallet(
+        userId,
+        Number(amount),
+        'TRIP_PAYMENT',
+        description || `Trip payment (ID: ${trip_id})`
+      );
+
+      return successResponse(res, 200, 'Trip payment via wallet successful', { success: true });
+    } catch (err) {
+      next(err);
+    }
+  },
 };
