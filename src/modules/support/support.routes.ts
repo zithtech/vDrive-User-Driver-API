@@ -141,4 +141,23 @@ router.patch(
 // Get user ticket messages
 router.get('/tickets/user/:id/messages', SupportController.getUserTicketMessages);
 
+/* ======================== CHATBOT ======================== */
+
+// Driver — send message to AI chatbot
+router.post(
+  '/chatbot/message',
+  celebrate({
+    [Segments.BODY]: Joi.object().keys({
+      message: Joi.string().required().max(1000),
+      history: Joi.array().items(
+        Joi.object().keys({
+          role: Joi.string().valid('user', 'model').required(),
+          content: Joi.string().required(),
+        })
+      ).optional().default([]),
+    }),
+  }),
+  SupportController.chatbotMessage
+);
+
 export default router;

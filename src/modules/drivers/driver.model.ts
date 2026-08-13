@@ -13,6 +13,7 @@ export interface DocumentUrl {
 
 export interface Address {
   street: string;
+  landmark?: string;
   city: string;
   district: string;
   state: string;

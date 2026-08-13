@@ -556,7 +556,11 @@ export const AuthService = {
 
       return {
         verified: true,
-        userData,
+        userData: {
+          ...userData,
+          device_id,
+        },
+        device_id,
         isNewUser: !isExistingUser,
         accessToken,
         refreshToken,
