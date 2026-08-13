@@ -24,6 +24,7 @@ import referralRoutes from '../modules/referrals/referral.routes';
 import couponRoutes from '../modules/coupon-management/coupon.routes';
 import driverReferralRoutes from '../modules/driver-referrals/driver-referral.routes';
 import supportRoutes from '../modules/support/support.routes';
+import walletRoutes from '../modules/wallet/wallet.routes';
 import { logger } from '../shared/logger';
 
 const router = Router();
@@ -91,5 +92,6 @@ router.use('/drivers/documents', driverDocumentsRoutes);
 router.use('/drivers/trip-verification', tripVerificationRoutes);
 router.use('/s3', s3Routes);
 router.use('/coupons', couponRoutes);
+router.use('/wallet', walletRoutes);
 
 export default router;

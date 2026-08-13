@@ -70,7 +70,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,js,json}\"",
     "test": "jest --coverage",
     "test:auth": "jest __tests__ --testNamePattern=\"Auth\"",
-    "dev": "ts-node-dev --respawn --transpile-only --ignore-watch logs,app.log src/server.ts",
+    "dev": "ts-node-dev --respawn --transpile-only --ignore-watch logs --ignore-watch app.log src/server.ts",
     "migrate": "node-pg-migrate",
     "build": "tsc",
     "start": "node dist/server.js",
