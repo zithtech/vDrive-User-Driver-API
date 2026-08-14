@@ -224,6 +224,22 @@ export const UserRepository = {
       await client.query(usageSql, [userId, -amount, type, description]);
 
       if (shouldTransact) await client.query('COMMIT');
+
+      // Trigger auto-reload asynchronously to not block the main flow
+      try {
+        const { WalletService } = require('../wallet/wallet.service');
+        const balanceResult = await client.query('SELECT wallet_balance FROM users WHERE id = $1', [
+          userId,
+        ]);
+        const currentBalance = parseFloat(balanceResult.rows[0]?.wallet_balance || 0);
+
+        // Execute without awaiting to allow fire-and-forget
+        WalletService.checkAndTriggerAutoReload(userId, currentBalance).catch((err: any) => {
+          logger.error(`Error in async auto-reload for user ${userId}: ${err}`);
+        });
+      } catch (err) {
+        logger.error(`Failed to trigger auto reload check for user ${userId}: ${err}`);
+      }
     } catch (error) {
       if (shouldTransact) await client.query('ROLLBACK');
       logger.error(`Error deducting from wallet for user ${userId}:`, error);

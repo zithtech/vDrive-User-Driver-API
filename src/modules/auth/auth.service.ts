@@ -158,11 +158,7 @@ export const AuthService = {
         const createdAt = new Date(otpData.created_at).getTime();
         const expiresAt = new Date(otpData.expires_at).getTime();
         const now = Date.now();
-        if (
-          now - createdAt < OTP_COOLDOWN_MS &&
-          now < expiresAt &&
-          otpData.attempt_count === 0
-        ) {
+        if (now - createdAt < OTP_COOLDOWN_MS && now < expiresAt && otpData.attempt_count === 0) {
           logger.info(
             `Duplicate OTP request for ${phone_number} within cooldown — skipping regeneration`
           );
@@ -326,7 +322,9 @@ export const AuthService = {
           1,
           Math.ceil((new Date(otpData.blocked_until).getTime() - Date.now()) / (60 * 1000))
         );
-        logger.warn(`[OTP-VERIFY] FAILED: ${phone_number} is blocked for ${remainingTime} more minutes`);
+        logger.warn(
+          `[OTP-VERIFY] FAILED: ${phone_number} is blocked for ${remainingTime} more minutes`
+        );
         throw {
           statusCode: 429,
           message: `Account is temporarily locked due to too many failed attempts. Try again after ${remainingTime} minutes.`,
@@ -338,14 +336,18 @@ export const AuthService = {
 
       // Check expiry
       if (new Date() > new Date(expires_at)) {
-        logger.warn(`[OTP-VERIFY] FAILED: OTP expired for ${phone_number} (expired at ${expires_at})`);
+        logger.warn(
+          `[OTP-VERIFY] FAILED: OTP expired for ${phone_number} (expired at ${expires_at})`
+        );
         throw {
           statusCode: 400,
           message: 'OTP expired',
         };
       }
 
-      logger.info(`[OTP-VERIFY] Step 2: OTP record valid, attempt_count=${attempt_count}, comparing hash`);
+      logger.info(
+        `[OTP-VERIFY] Step 2: OTP record valid, attempt_count=${attempt_count}, comparing hash`
+      );
 
       // Compare otp with hash
       const isMatch = await AuthService.compareHash(sanitizedOtp, otp_hash);
@@ -354,7 +356,9 @@ export const AuthService = {
         // Increment attempt count (0-based: first failure makes it 1)
         const newAttemptCount = attempt_count + 1;
         await AuthRepository.incrementAttemptCount(phone_number, role);
-        logger.warn(`[OTP-VERIFY] FAILED: Hash mismatch for ${phone_number}, attempts now=${newAttemptCount}/${MaxAttempt}`);
+        logger.warn(
+          `[OTP-VERIFY] FAILED: Hash mismatch for ${phone_number}, attempts now=${newAttemptCount}/${MaxAttempt}`
+        );
 
         if (newAttemptCount >= MaxAttempt) {
           const blockUntil = new Date(Date.now() + otpBlockDuration * 60 * 1000);
@@ -527,13 +531,17 @@ export const AuthService = {
             const lastActive = new Date(lastSessionResult.rows[0].last_active);
             const daysSinceLastActive = (Date.now() - lastActive.getTime()) / (1000 * 60 * 60 * 24);
             if (daysSinceLastActive > 7) {
-               const { notificationService } = require('../../services/notificationService');
-               notificationService.sendNotification(
-                 fcm_token,
-                 'Welcome Back! 👋',
-                 "We missed you! Let's get driving and earning today.",
-                 { type: 'welcome_back' }
-               ).catch((err: any) => logger.error(`Failed to send Welcome Back login notification: ${err.message}`));
+              const { notificationService } = require('../../services/notificationService');
+              notificationService
+                .sendNotification(
+                  fcm_token,
+                  'Welcome Back! 👋',
+                  "We missed you! Let's get driving and earning today.",
+                  { type: 'welcome_back' }
+                )
+                .catch((err: any) =>
+                  logger.error(`Failed to send Welcome Back login notification: ${err.message}`)
+                );
             }
           }
         } catch (error: any) {
@@ -552,7 +560,9 @@ export const AuthService = {
 
       // ✅ Always save session — regardless of allow_new_device
       await AuthRepository.upsertSession(userId, device_id, role, refreshToken, fcm_token);
-      logger.info(`[OTP-VERIFY] Step 7: Session created for ${role} ${userId} — verification complete`);
+      logger.info(
+        `[OTP-VERIFY] Step 7: Session created for ${role} ${userId} — verification complete`
+      );
 
       return {
         verified: true,
@@ -569,7 +579,9 @@ export const AuthService = {
     } catch (error: any) {
       if (error.statusCode) {
         // Already a structured error — log with code for traceability
-        logger.error(`[OTP-VERIFY] Error for ${phone_number}: [${error.statusCode}] ${error.message}`);
+        logger.error(
+          `[OTP-VERIFY] Error for ${phone_number}: [${error.statusCode}] ${error.message}`
+        );
         throw error;
       }
       logger.error(`[OTP-VERIFY] Unexpected error for ${phone_number}: ${error.message || error}`);
