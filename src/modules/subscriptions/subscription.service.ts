@@ -70,7 +70,7 @@ function getBillingCycleDays(billingCycle: string): number {
  */
 function daysBetween(startDate: Date, endDate: Date): number {
   const diffMs = endDate.getTime() - startDate.getTime();
-  return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+  return Math.max(0, diffMs / (1000 * 60 * 60 * 24));
 }
 
 /**
@@ -393,6 +393,18 @@ export const SubscriptionService = {
 
     const newPlanPrice = getPlanPrice(plan, input.billing_cycle);
 
+    let promoDiscount = 0;
+    let appliedPromoId: number | undefined;
+
+    if (input.promo_code) {
+      const validation = await PromoService.validatePromo(input.promo_code, driverId, newPlanPrice);
+      if (!validation.isValid) {
+        throw new Error(validation.message || 'Invalid promo code');
+      }
+      promoDiscount = validation.discountAmount || 0;
+      appliedPromoId = validation.promo?.id;
+    }
+
     // Get or create a Razorpay Plan for this plan + billing cycle
     const razorpayPlanId = await getOrCreateRazorpayPlan(plan, input.billing_cycle);
 
@@ -462,16 +474,17 @@ export const SubscriptionService = {
       },
     };
 
-    // If there's prorated credit, apply it as a one-time offer/addon
+    // If there's prorated credit or promo discount, apply it as a one-time offer/addon
     // Razorpay supports addons with negative amounts (credits) on the first invoice
-    if (proratedCredit > 0) {
+    const totalCredit = proratedCredit + promoDiscount;
+    if (totalCredit > 0) {
       // Cap the credit to the new plan price (driver shouldn't get negative amount)
-      const effectiveCredit = Math.min(proratedCredit, newPlanPrice);
+      const effectiveCredit = Math.min(totalCredit, newPlanPrice);
       // Apply as a one-time addon with negative amount (credit)
       subscriptionOptions.addons = [
         {
           item: {
-            name: `Prorated credit from previous plan`,
+            name: promoDiscount > 0 && proratedCredit > 0 ? `Prorated credit and promo discount` : promoDiscount > 0 ? `Promo discount` : `Prorated credit from previous plan`,
             amount: Math.round(effectiveCredit * 100), // paise
             currency: 'INR',
           },
@@ -486,7 +499,7 @@ export const SubscriptionService = {
     const razorpaySub = await (razorpay.subscriptions as any).create(subscriptionOptions);
 
     // Store a pending payment record
-    const firstChargeAmount = Math.max(0, newPlanPrice - Math.min(proratedCredit, newPlanPrice));
+    const firstChargeAmount = Math.max(0, newPlanPrice - Math.min(totalCredit, newPlanPrice));
     await SubscriptionRepository.createPayment({
       driver_id: driverId,
       plan_id: plan.id,
@@ -496,6 +509,8 @@ export const SubscriptionService = {
       razorpay_order_id: `sub_order_${razorpaySub.id}`,
       razorpay_subscription_id: razorpaySub.id,
       status: 'pending',
+      applied_promo_id: appliedPromoId,
+      discount_amount: promoDiscount,
       prorated_credit: proratedCredit,
       is_upgrade: isUpgrade,
       is_downgrade: isDowngrade,
@@ -595,6 +610,11 @@ export const SubscriptionService = {
          WHERE id = $1`,
         [driverId]
       );
+
+      // Record promo usage if applicable
+      if (payment.applied_promo_id && payment.discount_amount) {
+        await PromoService.usePromo(Number(payment.applied_promo_id), driverId, payment.id, Number(payment.discount_amount), client);
+      }
 
       await client.query('COMMIT');
 
@@ -1062,6 +1082,10 @@ export const SubscriptionService = {
 
   async getAllActiveSubscriptions() {
     return await SubscriptionRepository.getAllActiveSubscriptions();
+  },
+
+  async getSubscriptionHistory(driverId: string) {
+    return await SubscriptionRepository.getSubscriptionHistory(driverId);
   },
 
   async sendExpiryWarnings() {

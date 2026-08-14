@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { SupportService } from './support.service';
+import { ChatbotService } from './chatbot.service';
 import { successResponse } from '../../shared/errorHandler';
 import { logger } from '../../shared/logger';
 
@@ -242,6 +243,26 @@ export class SupportController {
       const { id } = req.params;
       const messages = await SupportService.getUserTicketMessages(id as string);
       return successResponse(res, 200, 'User messages fetched successfully', messages);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /* ======================== CHATBOT ======================== */
+
+  /** POST /support/chatbot/message — Driver sends a message to AI chatbot */
+  static async chatbotMessage(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { message, history } = req.body;
+      const rateLimitKey = (req as any).userId || req.ip || 'unknown';
+      logger.info(`[Chatbot] Received message: "${message?.substring(0, 50)}..." from ${rateLimitKey}`);
+      
+      const reply = await ChatbotService.sendMessage(message, history || [], rateLimitKey);
+      
+      return successResponse(res, 200, 'Chatbot response', {
+        reply,
+        timestamp: new Date().toISOString(),
+      });
     } catch (error) {
       next(error);
     }

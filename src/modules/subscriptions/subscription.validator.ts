@@ -26,6 +26,7 @@ export const createAutoSubscriptionValidator = celebrate({
     plan_id: Joi.number().required(),
     billing_cycle: Joi.string().valid('day', 'week', 'month').required(),
     auto_renew: Joi.boolean().optional().default(true),
+    promo_code: Joi.string().optional(),
   }),
 });
 

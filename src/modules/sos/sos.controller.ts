@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { SosService } from './sos.service';
 import { SosRepository } from './sos.repository';
 import { successResponse, errorResponse } from '../../shared/errorHandler';
+import { DriverRepository } from '../drivers/driver.repository';
 
 export class SosController {
   static async triggerSos(req: Request, res: Response, next: NextFunction) {
@@ -85,6 +86,21 @@ export class SosController {
         phone,
         relationship
       );
+
+      if (type === 'driver') {
+        const contacts = await SosRepository.getTrustedContacts(user_id, type);
+        if (contacts.length > 0) {
+          const mappedContacts = contacts.map(c => ({
+            name: c.name,
+            number: c.phone,
+            relation_type: c.relationship || 'Emergency'
+          }));
+          await DriverRepository.update(user_id, {
+            trusted_contact: mappedContacts
+          });
+        }
+      }
+
       return successResponse(res, 201, 'Trusted contact added', contact);
     } catch (err) {
       next(err);
@@ -97,6 +113,27 @@ export class SosController {
       const user_id = (req as any).user.id;
 
       await SosRepository.removeTrustedContact(id, user_id);
+
+      try {
+        const contacts = await SosRepository.getTrustedContacts(user_id, 'driver');
+        if (contacts.length > 0) {
+          const mappedContacts = contacts.map(c => ({
+            name: c.name,
+            number: c.phone,
+            relation_type: c.relationship || 'Emergency'
+          }));
+          await DriverRepository.update(user_id, {
+            trusted_contact: mappedContacts
+          });
+        } else {
+          await DriverRepository.update(user_id, {
+            trusted_contact: null
+          });
+        }
+      } catch (e) {
+        // Ignore if user is not a driver or update fails
+      }
+
       return successResponse(res, 200, 'Trusted contact removed');
     } catch (err) {
       next(err);

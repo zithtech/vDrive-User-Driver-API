@@ -2,7 +2,8 @@ import { DriverStatus, Address, CreateDriverInput } from './driver.model';
 // src/modules/drivers/driver.controller.ts
 import { Request, Response, NextFunction } from 'express';
 import { DriverService } from './driver.service';
-import { successResponse } from '../../shared/errorHandler';
+import { DriverRepository } from './driver.repository';
+import { successResponse, errorResponse } from '../../shared/errorHandler';
 import { Server } from 'socket.io';
 import { logger } from '../../shared/logger';
 import { TripRepository } from '../trip/trip.repository';
@@ -267,13 +268,25 @@ export const DriverController = {
       const stats = await TripRepository.getStatsByDriverId(driverId);
       const onlineHours = await DriverService.getOnlineHours(driverId);
 
+      const acceptedTrips = parseInt(stats.accepted_trips || '0');
+      const rejectedTrips = parseInt(stats.rejected_trips || '0');
+      const cancelledTrips = parseInt(stats.cancelled_trips || '0');
+      const completedTrips = parseInt(stats.completed_trips || '0');
+      
+      const totalOfferedTrips = acceptedTrips + rejectedTrips;
+      const acceptanceRate = totalOfferedTrips > 0 ? (acceptedTrips / totalOfferedTrips) * 100 : 0;
+      
+      const totalTrips = acceptedTrips;
+
       const performance = {
         rating: driver.performance?.averageRating ?? (driver.rating !== undefined && driver.rating !== null ? driver.rating : 4.8),
-        acceptanceRate: 98,
-        cancellationRate:
-          stats.cancelled_trips > 0 ? (stats.cancelled_trips / stats.total_trips) * 100 : 2,
-        totalTrips: stats.total_trips || 0,
+        acceptanceRate: Math.round(acceptanceRate),
+        cancellationRate: totalTrips > 0 ? (cancelledTrips / totalTrips) * 100 : 0,
+        totalTrips: totalTrips,
         onlineHours,
+        performance_score_monthly: driver.performance?.performance_score_monthly ?? null,
+        performance_score_weekly: driver.performance?.performance_score_weekly ?? null,
+        overall_score: driver.performance?.overall_score ?? null,
       };
 
       return successResponse(res, 200, 'Performance metrics fetched successfully', performance);
@@ -282,18 +295,153 @@ export const DriverController = {
     }
   },
 
+  async updatePerformancePercentile(req: Request, res: Response, next: NextFunction) {
+    try {
+      const driverId = req.params.id as string;
+      const { score, timeframe } = req.body;
+
+      if (typeof score !== 'number' || score < 0 || score > 100) {
+        return errorResponse(res, 400, 'Invalid score provided');
+      }
+
+      const validTimeframe = timeframe === 'week' ? 'week' : 'month';
+
+      await DriverRepository.updatePerformanceScore(driverId, score, validTimeframe);
+      const percentile = await DriverRepository.calculatePercentile(score, validTimeframe);
+
+      return successResponse(res, 200, 'Percentile calculated successfully', { percentile });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async getEarningsSummary(req: Request, res: Response, next: NextFunction) {
     try {
       const driverId = req.params.id as string;
-      const stats = await TripRepository.getStatsByDriverId(driverId);
+      const from = req.query.from as string | undefined;
+      const to = req.query.to as string | undefined;
+
+      const stats = await TripRepository.getStatsByDriverId(driverId, from, to);
+
+      const completedTrips = parseInt(stats.completed_trips || '0');
+      const totalEarnings = parseFloat(stats.total_earnings || '0');
+      const totalHours = parseFloat(stats.total_hours || '0');
+      const avgPerTrip = completedTrips > 0 ? Math.round((totalEarnings / completedTrips) * 100) / 100 : 0;
+
+      // Calculate growth % by comparing against the equivalent previous period
+      let growth: { earnings?: number; trips?: number; hours?: number; avgPerTrip?: number } = {};
+
+      if (from && to) {
+        const fromDate = new Date(from);
+        const toDate = new Date(to);
+        const durationMs = toDate.getTime() - fromDate.getTime();
+        const prevFrom = new Date(fromDate.getTime() - durationMs).toISOString();
+        const prevTo = fromDate.toISOString();
+
+        const prevStats = await TripRepository.getStatsByDriverId(driverId, prevFrom, prevTo);
+        const prevEarnings = parseFloat(prevStats.total_earnings || '0');
+        const prevTrips = parseInt(prevStats.completed_trips || '0');
+        const prevHours = parseFloat(prevStats.total_hours || '0');
+        const prevAvg = prevTrips > 0 ? prevEarnings / prevTrips : 0;
+
+        const calcGrowth = (curr: number, prev: number): number | null => {
+          if (prev === 0) return curr > 0 ? 100 : 0;
+          return Math.round(((curr - prev) / prev) * 10000) / 100;
+        };
+
+        growth = {
+          earnings: calcGrowth(totalEarnings, prevEarnings) ?? undefined,
+          trips: calcGrowth(completedTrips, prevTrips) ?? undefined,
+          hours: calcGrowth(totalHours, prevHours) ?? undefined,
+          avgPerTrip: calcGrowth(avgPerTrip, prevAvg) ?? undefined,
+        };
+      }
+
+      // Aggregate chart data
+      const rawChartData = await TripRepository.getEarningsChartData(driverId, from, to);
+      const chartMap = new Map<string, number>();
+
+      const getFilterType = () => {
+        if (!from || !to) return 'lifetime';
+        const fromDate = new Date(from);
+        const toDate = new Date(to);
+        const diffDays = (toDate.getTime() - fromDate.getTime()) / (1000 * 3600 * 24);
+        if (diffDays <= 2) return 'today'; // usually 1 day
+        if (diffDays <= 8) return 'week';  // usually 7 days
+        return 'month';
+      };
+
+      const filterType = getFilterType();
+
+      // Pre-fill chartMap to ensure X-axis is always stable even if there are no trips for a specific block
+      if (filterType === 'today') {
+        const blocks = ['12am', '4am', '8am', '12pm', '4pm', '8pm'];
+        blocks.forEach(b => chartMap.set(b, 0));
+      } else if (filterType === 'week') {
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        // Align to current day ordering if needed, but standard Sun-Sat is fine
+        days.forEach(d => chartMap.set(d, 0));
+      } else if (filterType === 'month') {
+        const dates = ['1', '5', '10', '15', '20', '25', '30'];
+        dates.forEach(d => chartMap.set(d, 0));
+      } else {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        months.forEach(m => chartMap.set(m, 0));
+      }
+
+      rawChartData.forEach(trip => {
+        const d = new Date(trip.ended_at);
+        let key = '';
+        if (filterType === 'today') {
+          const hour = d.getHours();
+          const block = Math.floor(hour / 4) * 4;
+          key = `${block === 0 ? 12 : block > 12 ? block - 12 : block}${block >= 12 ? 'pm' : 'am'}`;
+        } else if (filterType === 'week') {
+          const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+          key = days[d.getDay()];
+        } else if (filterType === 'month') {
+          // Snap the actual date to one of our intervals: 1, 5, 10, 15, 20, 25, 30
+          const date = d.getDate();
+          if (date < 5) key = '1';
+          else if (date < 10) key = '5';
+          else if (date < 15) key = '10';
+          else if (date < 20) key = '15';
+          else if (date < 25) key = '20';
+          else if (date < 30) key = '25';
+          else key = '30';
+        } else {
+          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          key = months[d.getMonth()];
+        }
+        
+        if (chartMap.has(key)) {
+          const current = chartMap.get(key) || 0;
+          chartMap.set(key, current + parseFloat(trip.total_fare || '0'));
+        }
+      });
+
+      // Format for UI (Map guarantees insertion order which we established in the pre-fill)
+      const chartData: { value: number, label: string }[] = [];
+      chartMap.forEach((value, key) => {
+        chartData.push({ value, label: key });
+      });
 
       const summary = {
-        totalEarnings: parseFloat(stats.total_earnings || 0),
-        tripsCompleted: parseInt(stats.completed_trips || 0),
-        totalTrips: parseInt(stats.total_trips || 0),
-        cancelledTrips: parseInt(stats.cancelled_trips || 0),
-        avgPerTrip: stats.completed_trips > 0 ? stats.total_earnings / stats.completed_trips : 0,
-        tips: 450,
+        totalEarnings,
+        tripsCompleted: completedTrips,
+        totalTrips: parseInt(stats.accepted_trips || '0'),
+        cancelledTrips: parseInt(stats.cancelled_trips || '0'),
+        avgPerTrip,
+        onlineHours: Math.round(totalHours * 100) / 100,
+        tips: 0,
+        growth,
+        chartData,
+        earningsBreakdown: {
+          baseFare: parseFloat(stats.total_base_fare || '0'),
+          extraTiming: parseFloat(stats.total_extra_timing || '0'),
+          incentives: 0, // Placeholder
+          tips: parseFloat(stats.total_tips || '0'),
+        }
       };
 
       return successResponse(res, 200, 'Earnings summary fetched successfully', summary);
@@ -318,29 +466,132 @@ export const DriverController = {
   async getEarningsTransactions(req: Request, res: Response, next: NextFunction) {
     try {
       const driverId = req.params.id as string;
-      const activity = await TripRepository.findActivityByDriverId(driverId);
+      const { from, to, limit, offset } = req.query as any;
 
-      const transactions = activity
+      // 1. Ride earnings from trips
+      const activity = await TripRepository.findActivityByDriverId(
+        driverId, from, to, undefined,
+        limit ? parseInt(limit) : undefined,
+        offset ? parseInt(offset) : undefined
+      );
+
+      const rideTransactions = activity
         .filter((t: any) => t.trip_status === 'COMPLETED' || t.trip_status === 'MID_CANCELLED')
         .map((t: any) => ({
           id: t.trip_id || t.id,
-          trip_id: t.trip_id || t.id,
-          trip_code: t.trip_code || t.booking_code,
           title: t.trip_status === 'COMPLETED' ? 'Ride Earnings' : 'Cancellation Fee',
+          subtitle: `Trip #${(t.trip_code || t.booking_code || t.trip_id || t.id || '').toString().slice(-6)}`,
           amount: parseFloat(t.total_fare || '0'),
-          date: new Date(t.created_at).toLocaleDateString(),
-          time: new Date(t.created_at).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          pickup: t.pickup_address,
-          drop: t.drop_address,
-          distance: t.distance_km ? `${t.distance_km} km` : undefined,
-          status: t.trip_status === 'COMPLETED' ? 'Completed' : 'Cancelled',
-          payment_method: t.payment_method,
+          date: new Date(t.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }),
+          time: new Date(t.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }),
+          type: 'Credit' as const,
+          badge: t.payment_method === 'CASH' ? 'Cash' : 'Online',
+          icon: 'car',
+          source: 'ride' as const,
+          tripData: {
+            id: t.trip_id || t.id,
+            trip_id: t.trip_id || t.id,
+            trip_code: t.trip_code || t.booking_code,
+            trip_status: t.trip_status,
+            total_fare: parseFloat(t.total_fare || '0'),
+            base_fare: parseFloat(t.base_fare || '0'),
+            distance_fare: parseFloat(t.distance_fare || '0'),
+            time_fare: parseFloat(t.time_fare || '0'),
+            waiting_charges: parseFloat(t.waiting_charges || '0'),
+            tip: parseFloat(t.tip || '0'),
+            toll_charges: parseFloat(t.toll_charges || '0'),
+            night_charges: parseFloat(t.night_charges || '0'),
+            discount: parseFloat(t.discount || '0'),
+            pickup_address: t.pickup_address,
+            drop_address: t.drop_address,
+            distance_km: t.distance_km,
+            payment_method: t.payment_method,
+            passenger_name: t.passenger_name,
+            created_at: t.created_at,
+            started_at: t.started_at,
+            ended_at: t.ended_at,
+          },
+          walletData: null,
+          createdAt: t.created_at,
         }));
 
-      return successResponse(res, 200, 'Earnings transactions fetched successfully', transactions);
+      // 2. Wallet usage (subscription, penalty, topup, etc.)
+      const driver = await DriverService.getDriverById(driverId);
+      const walletTransactions = (driver.creditUsage || [])
+        .filter((u: any) => {
+          // Only show wallet debits (subscription, penalty, fees) — exclude topups/credits
+          if (Number(u.amount) > 0) return false;
+          if (!from && !to) return true;
+          const uDate = new Date(u.createdAt);
+          if (from && uDate < new Date(from)) return false;
+          if (to && uDate > new Date(to)) return false;
+          return true;
+        })
+        .map((u: any) => {
+          const desc = (u.description || '').replace(/\[.*?\]\[.*?\]/, '').trim();
+          const isCredit = Number(u.amount) > 0;
+
+          // Determine badge based on type or description
+          let badge = isCredit ? 'Topup' : 'Fee';
+          let icon = isCredit ? 'wallet' : 'card';
+          let title = isCredit ? 'Wallet Topup' : 'Wallet Deduction';
+
+          const descLower = desc.toLowerCase();
+          if (descLower.includes('subscription') || descLower.includes('plan')) {
+            badge = 'Subscription'; icon = 'card'; title = 'Subscription Payment';
+          } else if (descLower.includes('penalty') || descLower.includes('fine')) {
+            badge = 'Penalty'; icon = 'warning'; title = 'Penalty Charge';
+          } else if (descLower.includes('incentive') || descLower.includes('bonus')) {
+            badge = 'Incentive'; icon = 'gift'; title = 'Incentive Bonus';
+          } else if (descLower.includes('refund')) {
+            badge = 'Refund'; icon = 'refresh'; title = 'Refund';
+          } else if (desc) {
+            title = desc.split(/via/i)[0].trim() || title;
+          }
+
+          // Extract payment method
+          let paymentMethod: string | undefined;
+          if (desc.toLowerCase().includes('via')) {
+            paymentMethod = desc.split(/via/i)[1]?.trim();
+            if (paymentMethod?.includes(':')) paymentMethod = paymentMethod.split(':')[0].trim();
+          }
+
+          const match = (u.description || '').match(/\[(.*?)\]\[(.*?)\]/);
+
+          return {
+            id: u.usageId,
+            title,
+            subtitle: desc || title,
+            amount: Number(u.amount),
+            date: new Date(u.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }),
+            time: new Date(u.createdAt).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }),
+            type: isCredit ? 'Credit' as const : 'Debit' as const,
+            badge,
+            icon,
+            source: 'wallet' as const,
+            tripData: null,
+            walletData: {
+              id: u.usageId,
+              type: u.type || (isCredit ? 'WALLET_TOPUP' : 'WITHDRAW'),
+              title,
+              date: new Date(u.createdAt).toLocaleDateString(),
+              time: new Date(u.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              amount: Number(u.amount),
+              status: 'Completed',
+              paymentMethod,
+              orderId: match?.[1] || u.referenceId || null,
+              paymentId: match?.[2] || null,
+              createdAt: u.createdAt,
+            },
+            createdAt: u.createdAt,
+          };
+        });
+
+      // 3. Merge and sort by date DESC
+      const allTransactions = [...rideTransactions, ...walletTransactions]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      return successResponse(res, 200, 'Earnings transactions fetched successfully', allTransactions);
     } catch (err) {
       next(err);
     }
@@ -351,16 +602,41 @@ export const DriverController = {
       const driverId = req.params.id as string;
       const driver = await DriverService.getDriverById(driverId);
       
-      const transactions = (driver.creditUsage || []).map((u: any) => ({
-        id: u.usageId,
-        type: u.type || (u.amount > 0 ? 'WALLET_TOPUP' : 'WITHDRAW'),
-        title: u.description || (u.amount > 0 ? 'Wallet Topup' : 'Wallet Deduction'),
-        date: new Date(u.createdAt).toLocaleDateString(),
-        time: new Date(u.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        amount: Number(u.amount),
-        status: 'Completed',
-        createdAt: u.createdAt,
-      }));
+      const transactions = (driver.creditUsage || []).map((u: any) => {
+        let paymentMethod;
+        let orderId = u.referenceId || null;
+        let paymentId = null;
+        const desc = u.description || '';
+        
+        // Extract order/payment ids from description if present
+        const match = desc.match(/\[(.*?)\]\[(.*?)\]/);
+        if (match) {
+           orderId = match[1];
+           paymentId = match[2];
+        }
+
+        let cleanDesc = desc.replace(/\[.*?\]\[.*?\]/, '').trim();
+        if (cleanDesc.toLowerCase().includes('via')) {
+          paymentMethod = cleanDesc.split(/via/i)[1].trim();
+          if (paymentMethod.includes(':')) {
+            paymentMethod = paymentMethod.split(':')[0].trim();
+          }
+        }
+
+        return {
+          id: u.usageId,
+          type: u.type || (u.amount > 0 ? 'WALLET_TOPUP' : 'WITHDRAW'),
+          title: cleanDesc || (u.amount > 0 ? 'Wallet Topup' : 'Wallet Deduction'),
+          date: new Date(u.createdAt).toLocaleDateString(),
+          time: new Date(u.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          amount: Number(u.amount),
+          status: 'Completed',
+          paymentMethod,
+          orderId,
+          paymentId,
+          createdAt: u.createdAt,
+        };
+      });
 
       transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 

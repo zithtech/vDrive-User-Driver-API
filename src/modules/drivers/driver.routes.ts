@@ -33,6 +33,7 @@ router.patch('/:id/fcm-token', DriverController.updateFcmToken);
 // Stats & Activity
 router.get('/activity/:id', DriverController.getRideActivity);
 router.get('/performance/:id', DriverController.getPerformance);
+router.post('/performance/:id/percentile', DriverController.updatePerformancePercentile);
 router.get('/earnings/:id/summary', DriverController.getEarningsSummary);
 router.get('/earnings/:id/transactions', DriverController.getEarningsTransactions);
 router.get('/wallet/:id/balance', DriverController.getWalletBalance);

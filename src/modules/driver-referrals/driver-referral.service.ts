@@ -40,30 +40,61 @@ export const DriverReferralService = {
       // 4. Issue Rewards
       const config = await DriverReferralRepository.getActiveConfig('DRIVER');
 
-      const REFEREE_REWARD = config ? parseFloat(config.referee_reward) : 100;
-      const REFERRER_REWARD = config ? parseFloat(config.referrer_reward) : 50;
+      if (!config) {
+        logger.info(`No active referral config for DRIVER, skipping rewards for driver ${driverId}`);
+        await client.query('COMMIT');
+        return;
+      }
+
+      const REFEREE_REWARD = !isNaN(parseFloat(config.referee_reward)) ? parseFloat(config.referee_reward) : 0;
+      const REFERRER_REWARD = !isNaN(parseFloat(config.referrer_reward)) ? parseFloat(config.referrer_reward) : 0;
+
+      const REFEREE_REWARD_TYPE = (config.referee_reward_type || 'AMOUNT').toUpperCase();
+      const REFERRER_REWARD_TYPE = (config.referrer_reward_type || 'AMOUNT').toUpperCase();
 
       const referrer = await DriverRepository.findById(referral.referrer_id);
       const referee = await DriverRepository.findById(driverId);
 
-      if (referrer) {
-        await this.issueReferralCoupon(
-          referrer.driverId as string,
-          REFERRER_REWARD,
-          'REFERRER',
-          `Reward for referring ${referee?.full_name || 'a new driver'}`,
-          client
-        );
+      if (referrer && REFERRER_REWARD > 0) {
+        if (REFERRER_REWARD_TYPE === 'PERCENTAGE') {
+          await this.issueReferralCoupon(
+            referrer.driverId as string,
+            REFERRER_REWARD,
+            'REFERRER',
+            `Reward for referring ${referee?.full_name || 'a new driver'}`,
+            'percentage',
+            client
+          );
+        } else {
+          await this.issueWalletReward(
+            referrer.driverId as string,
+            REFERRER_REWARD,
+            'REFERRER',
+            `Reward for referring ${referee?.full_name || 'a new driver'}`,
+            client
+          );
+        }
       }
 
-      if (referee) {
-        await this.issueReferralCoupon(
-          referee.driverId as string,
-          REFEREE_REWARD,
-          'REFEREE',
-          `Welcome reward for joining via referral`,
-          client
-        );
+      if (referee && REFEREE_REWARD > 0) {
+        if (REFEREE_REWARD_TYPE === 'PERCENTAGE') {
+          await this.issueReferralCoupon(
+            referee.driverId as string,
+            REFEREE_REWARD,
+            'REFEREE',
+            `Welcome reward for joining via referral`,
+            'percentage',
+            client
+          );
+        } else {
+          await this.issueWalletReward(
+            referee.driverId as string,
+            REFEREE_REWARD,
+            'REFEREE',
+            `Welcome reward for joining via referral`,
+            client
+          );
+        }
       }
 
       await client.query('COMMIT');
@@ -110,6 +141,7 @@ export const DriverReferralService = {
     amount: number,
     type: string,
     description: string,
+    discountType: 'percentage' | 'fixed' = 'fixed',
     client?: any
   ) {
     // 1. Generate unique promo code
@@ -118,7 +150,7 @@ export const DriverReferralService = {
     const promoData = {
       code,
       description: `Referral Reward - ${type}: ${description}`,
-      discount_type: 'fixed',
+      discount_type: discountType,
       discount_value: amount,
       target_type: 'specific_driver',
       target_driver_id: driverId,
@@ -135,7 +167,8 @@ export const DriverReferralService = {
 
     // 2. Send Push Notification
     const title = '🎁 Referral Reward Received!';
-    const body = `Congratulations! You've earned a ₹${amount} coupon for: ${description}. Use code ${code} for your next subscription.`;
+    const amountStr = discountType === 'percentage' ? `${amount}%` : `₹${amount}`;
+    const body = `Congratulations! You've earned a ${amountStr} coupon for: ${description}. Use code ${code} for your next subscription.`;
 
     await NotificationService.sendNotificationToDriver(driverId, title, body, {
       type: 'REFERRAL_COUPON',

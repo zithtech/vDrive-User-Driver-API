@@ -174,7 +174,7 @@ export const TripRepository = {
                -- 'vehicle_type', d.vehicle_type
               ) AS driver_details,
               COALESCE(jsonb_agg(to_jsonb(tc) ORDER BY tc.changed_at DESC) 
-              FILTER (WHERE tc.id IS NOT NULL), '[]'::jsonb) AS trip_changes
+              FILTER (WHERE tc.trip_id IS NOT NULL), '[]'::jsonb) AS trip_changes
        FROM trips t 
        LEFT JOIN users u ON t.user_id = u.id
        LEFT JOIN trip_changes tc ON t.trip_id = tc.trip_id 
@@ -215,7 +215,7 @@ export const TripRepository = {
                -- 'vehicle_type', d.vehicle_type
               ) AS driver_details,
               COALESCE(jsonb_agg(to_jsonb(tc) ORDER BY tc.changed_at DESC) 
-              FILTER (WHERE tc.id IS NOT NULL), '[]'::jsonb) AS trip_changes
+              FILTER (WHERE tc.trip_id IS NOT NULL), '[]'::jsonb) AS trip_changes
        FROM trips t 
        LEFT JOIN users u ON t.user_id = u.id
        LEFT JOIN drivers d ON t.driver_id = d.id
@@ -546,18 +546,60 @@ export const TripRepository = {
     return result.rows;
   },
 
-  async getStatsByDriverId(driverId: string): Promise<any> {
+  async getStatsByDriverId(driverId: string, from?: string, to?: string): Promise<any> {
+    const params: any[] = [driverId];
+    let dateFilter = '';
+
+    if (from) {
+      params.push(from);
+      dateFilter += ` AND created_at >= $${params.length}::timestamptz`;
+    }
+    if (to) {
+      params.push(to);
+      dateFilter += ` AND created_at <= $${params.length}::timestamptz`;
+    }
+
     const result = await query(
       `SELECT 
-        COUNT(*) as total_trips,
-        COUNT(CASE WHEN trip_status = 'COMPLETED' THEN 1 END) as completed_trips,
-        COUNT(CASE WHEN trip_status = 'CANCELLED' THEN 1 END) as cancelled_trips,
-        SUM(CASE WHEN trip_status = 'COMPLETED' THEN total_fare ELSE 0 END) as total_earnings
+        COUNT(CASE WHEN driver_id = $1 THEN 1 END) as accepted_trips,
+        COUNT(CASE WHEN rejected_drivers @> to_jsonb($1::text) THEN 1 END) as rejected_trips,
+        COUNT(CASE WHEN driver_id = $1 AND trip_status = 'COMPLETED' THEN 1 END) as completed_trips,
+        COUNT(CASE WHEN driver_id = $1 AND trip_status = 'CANCELLED' THEN 1 END) as cancelled_trips,
+        SUM(CASE WHEN driver_id = $1 AND trip_status = 'COMPLETED' THEN total_fare ELSE 0 END) as total_earnings,
+        SUM(CASE WHEN driver_id = $1 AND trip_status = 'COMPLETED' AND ended_at IS NOT NULL
+             THEN EXTRACT(EPOCH FROM (ended_at - COALESCE(assigned_at, started_at, created_at))) / 3600.0
+             ELSE 0 END) as total_hours,
+        SUM(CASE WHEN driver_id = $1 AND trip_status = 'COMPLETED' THEN COALESCE(base_fare, 0) ELSE 0 END) as total_base_fare,
+        SUM(CASE WHEN driver_id = $1 AND trip_status = 'COMPLETED' THEN COALESCE(waiting_charges, 0) + COALESCE(day_halt_charges, 0) + COALESCE(additional_charges, 0) ELSE 0 END) as total_extra_timing,
+        0 as total_tips
       FROM trips 
-      WHERE driver_id = $1`,
-      [driverId]
+      WHERE (driver_id = $1 OR rejected_drivers @> to_jsonb($1::text))${dateFilter}`,
+      params
     );
     return result.rows[0];
+  },
+
+  async getEarningsChartData(driverId: string, from?: string, to?: string): Promise<{ ended_at: Date, total_fare: string }[]> {
+    const params: any[] = [driverId];
+    let dateFilter = '';
+
+    if (from) {
+      params.push(from);
+      dateFilter += ` AND ended_at >= $${params.length}::timestamptz`;
+    }
+    if (to) {
+      params.push(to);
+      dateFilter += ` AND ended_at <= $${params.length}::timestamptz`;
+    }
+
+    const result = await query(
+      `SELECT ended_at, total_fare
+       FROM trips 
+       WHERE driver_id = $1 AND trip_status = 'COMPLETED' AND ended_at IS NOT NULL ${dateFilter}
+       ORDER BY ended_at ASC`,
+      params
+    );
+    return result.rows;
   },
 
   async cancelTrip(

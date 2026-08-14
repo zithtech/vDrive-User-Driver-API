@@ -78,19 +78,19 @@ router.use('/notifications', notificationRoutes);
 router.use('/notification-management', notificationManagementRoutes);
 router.use('/sos', sosRoutes);
 router.use('/support', supportRoutes);
+router.use('/s3', s3Routes);
+router.use('/generate-presigned-url', s3Routes);
 
 router.use(isAuthenticated);
 router.use('/trips', tripRoutes);
 router.use('/users', userRoutes);
 router.use('/drivers', driverRoutes);
-router.use('/generate-presigned-url', s3Routes);
 router.use('/payment', paymentRoutes);
 router.use('/simulation', simulationRoutes);
 router.use('/triptransactions', tripTransactionRoutes);
 router.use('/pricing', pricingRoutes);
 router.use('/drivers/documents', driverDocumentsRoutes);
 router.use('/drivers/trip-verification', tripVerificationRoutes);
-router.use('/s3', s3Routes);
 router.use('/coupons', couponRoutes);
 router.use('/wallet', walletRoutes);
 

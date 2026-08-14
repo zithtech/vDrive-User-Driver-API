@@ -29,6 +29,7 @@ router.get('/preview-plan-change', previewPlanChangeValidator, SubscriptionContr
 router.patch('/auto-renew', toggleAutoRenewValidator, SubscriptionController.toggleAutoRenew);
 
 // ─── Existing: Queries ──────────────────────────────────────────────
+router.get('/history', SubscriptionController.getSubscriptionHistory);
 router.get('/my-subscription', SubscriptionController.getMySubscription);
 router.get('/all-active', SubscriptionController.getAllActiveSubscriptions);
 router.get('/', SubscriptionController.getAllPlans);

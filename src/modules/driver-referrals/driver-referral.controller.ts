@@ -38,7 +38,7 @@ export const DriverReferralController = {
 
       return successResponse(res, 200, 'Referral code fetched successfully', {
         referral_code: referralCode,
-        share_message: `Hey! Join V-Drive using my code ${referralCode} and get ₹${refereeReward} subscription discount after your first ride! Download now: ${config.referralDownloadUrl}`,
+        share_message: `Hey! Join T2drive using my code ${referralCode} and get ₹${refereeReward} subscription discount after your first ride! Download now: ${config.referralDownloadUrl}`,
       });
     } catch (err: any) {
       logger.error(`Error fetching referral code: ${err.message}`);

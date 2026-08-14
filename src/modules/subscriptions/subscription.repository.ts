@@ -111,10 +111,28 @@ export const SubscriptionRepository = {
 
   // ─── Driver Subscriptions ──────────────────────────────────────────
 
-  async getActiveSubscription(driverId: string, client?: any): Promise<DriverSubscription | null> {
+  async getActiveSubscription(driverId: string, client?: any): Promise<any | null> {
     const q = client ? client.query.bind(client) : query;
     const result = await q(
-      "SELECT * FROM driver_subscriptions WHERE driver_id = $1 AND status = 'active'",
+      `SELECT 
+         ds.*,
+         dp.razorpay_payment_id,
+         dp.razorpay_order_id,
+         dp.payment_type as payment_method
+       FROM driver_subscriptions ds
+       LEFT JOIN LATERAL (
+         SELECT razorpay_payment_id, razorpay_order_id, payment_type
+         FROM payments
+         WHERE driver_id = ds.driver_id
+           AND (
+             (ds.razorpay_subscription_id IS NOT NULL AND razorpay_subscription_id = ds.razorpay_subscription_id)
+             OR (plan_id = ds.plan_id AND billing_cycle = ds.billing_cycle)
+           )
+           AND status = 'completed'
+         ORDER BY created_at DESC
+         LIMIT 1
+       ) dp ON true
+       WHERE ds.driver_id = $1 AND ds.status = 'active'`,
       [driverId]
     );
     return result.rows[0] || null;
@@ -269,4 +287,44 @@ export const SubscriptionRepository = {
     );
     return result.rows || [];
   },
+
+  // ─── Subscription History ──────────────────────────────────────────
+
+  async getSubscriptionHistory(driverId: string): Promise<{ subscriptions: any[]; totalSpent: number; totalCount: number }> {
+    // Fetch all subscriptions (active, expired, cancelled) with plan details
+    const subsResult = await query(
+      `SELECT ds.*, rp.plan_name, rp.daily_price, rp.weekly_price, rp.monthly_price, rp.features,
+              p.razorpay_payment_id, p.razorpay_order_id
+       FROM driver_subscriptions ds
+       JOIN recharge_plans rp ON ds.plan_id = rp.id
+       LEFT JOIN LATERAL (
+         SELECT razorpay_payment_id, razorpay_order_id
+         FROM payments
+         WHERE driver_id = ds.driver_id AND plan_id = ds.plan_id AND status = 'completed'
+         ORDER BY created_at DESC
+         LIMIT 1
+       ) p ON true
+       WHERE ds.driver_id = $1
+       ORDER BY ds.created_at DESC`,
+      [driverId]
+    );
+
+    // Calculate total spent from completed payments
+    const spentResult = await query(
+      `SELECT COALESCE(SUM(amount), 0) as total_spent, COUNT(*) as total_count
+       FROM payments
+       WHERE driver_id = $1 AND status = 'completed'`,
+      [driverId]
+    );
+
+    const totalSpent = Number(spentResult.rows[0]?.total_spent || 0);
+    const totalCount = subsResult.rows?.length || 0;
+
+    return {
+      subscriptions: subsResult.rows || [],
+      totalSpent,
+      totalCount,
+    };
+  },
 };
+
