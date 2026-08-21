@@ -24,7 +24,9 @@ export const PricingValidation = {
     to_district: Joi.string().allow('', null).optional(),
     to_area: Joi.string().allow('', null).optional(),
     // Optional explicit overrides (app's local day/time); otherwise derived from scheduled_at/now
-    day: Joi.string().valid(...DAYS).optional(),
+    day: Joi.string()
+      .valid(...DAYS)
+      .optional(),
     time: Joi.string()
       .pattern(/^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/)
       .optional(),

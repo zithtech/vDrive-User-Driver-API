@@ -43,7 +43,12 @@ export const UserNotifications = {
       androidChannelId: 'default',
     }),
 
-  bookingCancelled: (fcmToken: string, bookingId: string, reason?: string, cancelledBy?: string) => {
+  bookingCancelled: (
+    fcmToken: string,
+    bookingId: string,
+    reason?: string,
+    cancelledBy?: string
+  ) => {
     let title = `Booking Cancelled (ID: ${bookingId})`;
     let bodyText = `Reason: ${reason || 'Not specified'}`;
 
@@ -171,6 +176,30 @@ export const UserNotifications = {
       type: UserNotificationType.TOO_MANY_ATTEMPTS,
       title: 'Too Many Attempts',
       body: `Too many failed attempts. Account locked for ${blockDuration} minutes.`,
+      androidChannelId: 'default',
+    }),
+
+  walletLowBalance: (fcmToken: string, currentBalance: number) =>
+    sendToDevice(fcmToken, {
+      type: UserNotificationType.WALLET_LOW_BALANCE,
+      title: 'Wallet Balance Low',
+      body: `Your wallet balance is running low (₹${currentBalance}). Recharge now to avoid interruptions.`,
+      androidChannelId: 'default',
+    }),
+
+  walletAutoReloadSuccess: (fcmToken: string, amount: number, currentBalance: number) =>
+    sendToDevice(fcmToken, {
+      type: UserNotificationType.WALLET_AUTO_RELOAD_SUCCESS,
+      title: 'Auto Reload Successful',
+      body: `₹${amount} has been added to your wallet automatically. Current Balance: ₹${currentBalance}`,
+      androidChannelId: 'default',
+    }),
+
+  walletAutoReloadFailed: (fcmToken: string) =>
+    sendToDevice(fcmToken, {
+      type: UserNotificationType.WALLET_AUTO_RELOAD_FAILED,
+      title: 'Auto Reload Failed',
+      body: `We couldn't reload your wallet automatically. Please update your payment method or recharge manually.`,
       androidChannelId: 'default',
     }),
 };
