@@ -4,6 +4,7 @@ import config from '../config';
 const isServiceAuthenticated = (req: Request, res: Response, next: NextFunction) => {
   try {
     const apiKey = req.headers['x-api-key'] as string;
+  console.log('isAuthenticatedOrService headers:', req.headers);
 
     if (!apiKey) {
       return res.status(401).json({

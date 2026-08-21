@@ -27,6 +27,7 @@ import supportRoutes from '../modules/support/support.routes';
 import { logger } from '../shared/logger';
 
 const router = Router();
+router.use((req, res, next) => { require('fs').appendFileSync('/tmp/vdrive-index-path.log', 'index.ts hit! path: ' + req.path + '\n'); next(); });
 
 router.get('/health-check', (req, res) => {
   logger.info('Health check called');

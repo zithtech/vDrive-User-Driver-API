@@ -59,10 +59,16 @@ export class SosService {
         enrichedUserData = {
           full_name: driver.full_name || `${driver.first_name} ${driver.last_name}`,
           phone_number: driver.phone_number,
+          alternate_contact: driver.alternate_contact || null,
+          email: driver.email || null,
+          address: driver.address || null,
+          profile_pic_url: driver.profile_pic_url || driver.profilePicUrl || null,
           vdrive_id: driver.vdrive_id,
           type: 'driver',
           current_lat: driver.current_lat,
           current_lng: driver.current_lng,
+          created_at: driver.created_at || null,
+          trusted_contact: driver.trusted_contact || null,
         };
       }
     } else {
@@ -71,24 +77,47 @@ export class SosService {
         ? {
             full_name: user.full_name || `${user.first_name} ${user.last_name}`,
             phone_number: user.phone_number,
+            alternate_contact: user.alternate_contact || null,
+            email: user.email || null,
+            profile_url: user.profile_url || null,
             vdrive_id: user.user_code,
             type: 'customer',
+            emergency_contacts: user.emergency_contacts || null,
+            created_at: user.created_at || null,
           }
         : null;
     }
 
     const trip = currentTripId ? await TripRepository.findById(currentTripId) : null;
 
+    // Fetch trusted contacts from DB for the SOS user
+    const trustedContacts = await SosRepository.getTrustedContacts(user_id, user_type);
+
     const enrichedData = {
       ...sosEvent,
       user: enrichedUserData,
       trip: trip
         ? {
+            trip_id: trip.trip_id,
+            trip_code: (trip as any).trip_code || null,
             pickup_address: trip.pickup_address,
             drop_address: trip.drop_address,
             status: trip.trip_status,
+            ride_type: trip.ride_type,
+            service_type: trip.service_type,
+            distance_km: trip.distance_km,
+            total_fare: trip.total_fare,
+            base_fare: trip.base_fare,
+            vehicle_type: trip.vehicle_type || null,
+            vehicle_model: trip.vehicle_model || null,
+            vehicle_id: trip.vehicle_id || null,
+            scheduled_start_time: trip.scheduled_start_time || trip.original_scheduled_start_time,
+            actual_pickup_time: trip.actual_pickup_time || null,
+            user_details: (trip as any).user_details || null,
+            driver_details: (trip as any).driver_details || null,
           }
         : null,
+      trusted_contacts: trustedContacts || [],
       latitude: enrichedUserData?.current_lat,
       longitude: enrichedUserData?.current_lng,
     };
@@ -202,6 +231,10 @@ export class SosService {
     } catch (error) {
       logger.error('Failed to send SOS resolve webhook:', error);
     }
+  }
+
+  static async getSosHistory(filters?: { status?: string; user_type?: string; from_date?: string; to_date?: string }, page: number = 1, limit: number = 20) {
+    return await SosRepository.findAllSosHistory(filters, page, limit);
   }
 
   private static async sendWebhookWithRetry(
