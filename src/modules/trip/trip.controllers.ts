@@ -10,7 +10,7 @@ import { UserRepository } from '../users/user.repository';
 import { DriverRepository } from '../drivers/driver.repository';
 
 import { v4 as uuidv4 } from 'uuid';
-import { RideType, ServiceType, BookingType, TripStatus, CancelBy } from '../../enums/trip.enums';
+import { RideType, ServiceType, BookingType, TripStatus, CancelBy, CancelReason } from '../../enums/trip.enums';
 import { emitTripUpdate } from '../../sockets/socket';
 
 export const TripController = {
@@ -91,9 +91,30 @@ export const TripController = {
           Number(trip.pickup_lng),
           Number(trip.pickup_lat),
           trip
-        ).catch((err: any) =>
-          logger.error(`Automatic broadcast failed for trip ${trip.trip_id}: ${err.message}`)
-        );
+        ).catch(async (err: any) => {
+          logger.error(`Automatic broadcast failed for trip ${trip.trip_id}: ${err.message}`);
+          try {
+            await TripService.cancelTrip(
+              trip.trip_id as string,
+              TripStatus.CANCELLED,
+              CancelReason.OTHER,
+              CancelBy.SYSTEM,
+              'No drivers available in the area'
+            );
+            const { emitToRoom } = require('../../sockets/socket');
+            emitToRoom(`user_${trip.user_id}`, 'TRIP_CANCELLED', { trip_id: trip.trip_id, reason: 'NO_DRIVER_AVAILABLE' });
+            if (userfcmtoken && trip.trip_id) {
+              await UserNotifications.rideCancelled(
+                userfcmtoken,
+                trip.trip_id as string,
+                CancelReason.OTHER,
+                CancelBy.SYSTEM
+              );
+            }
+          } catch (cancelErr: any) {
+            logger.error(`Failed to cancel trip ${trip.trip_id} after broadcast failure: ${cancelErr.message}`);
+          }
+        });
       }
 
       // If scheduled ride, broadcast to all eligible drivers (Online & Offline)
