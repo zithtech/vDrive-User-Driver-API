@@ -42,6 +42,7 @@ export class SosController {
   }
 
   static async resolveSos(req: Request, res: Response, next: NextFunction) {
+    require('fs').appendFileSync('/tmp/vdrive-sos.log', 'resolveSos hit with body: ' + JSON.stringify(req.body) + '\n');
     try {
       const { sos_id } = req.body;
       if (!sos_id) {
@@ -135,6 +136,22 @@ export class SosController {
       }
 
       return successResponse(res, 200, 'Trusted contact removed');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async getSosHistory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { status, user_type, from_date, to_date, page = '1', limit = '20' } = req.query;
+      const filters = {
+        status: status as string,
+        user_type: user_type as string,
+        from_date: from_date as string,
+        to_date: to_date as string,
+      };
+      const result = await SosService.getSosHistory(filters, parseInt(page as string), parseInt(limit as string));
+      return successResponse(res, 200, 'SOS history retrieved', result);
     } catch (err) {
       next(err);
     }

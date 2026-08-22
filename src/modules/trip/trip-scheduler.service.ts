@@ -359,8 +359,8 @@ export const TripSchedulerService = {
 
       // 📍 REAL-TIME: Broadcast via Sockets if io is provided
       if (io) {
-        logger.info(`📡 Broadcasting NEW_TRIP_REQUEST via Sockets for trip ${trip.trip_id}`);
-        io.emit('NEW_TRIP_REQUEST', { trip });
+        logger.info(`📡 Broadcasting NEW_SCHEDULED_RIDE via Sockets for trip ${trip.trip_id}`);
+        io.emit('NEW_SCHEDULED_RIDE', { trip });
       }
     } catch (error: any) {
       logger.error(`Error in broadcastNewScheduledRide: ${error.message}`);
@@ -410,6 +410,152 @@ export const TripSchedulerService = {
       }
     } catch (error: any) {
       logger.error(`Error in autoCancelOverdueScheduledRides: ${error.message}`);
+    }
+  },
+
+  /**
+   * Handles driver no-shows (Driver accepted but didn't start ride within 15 min of scheduled_start_time).
+   * Penalizes the driver, and either auto-assigns (re-broadcasts) or fully cancels.
+   */
+  async autoCancelDriverNoShowRides() {
+    try {
+      const { TripRepository } = require('./trip.repository');
+      const { DriverService } = require('../drivers/driver.service');
+      const { emitToRoom, getIO } = require('../../sockets/socket');
+      
+      // Find trips accepted but not started 15 mins past start time
+      const result = await query(
+        `SELECT t.* 
+         FROM trips t
+         WHERE t.booking_type = 'SCHEDULED' 
+         AND t.trip_status IN ('ACCEPTED', 'ARRIVING', 'ARRIVED', 'ASSIGNED') 
+         AND t.scheduled_start_time < NOW() - INTERVAL '15 minutes'`
+      );
+
+      for (const trip of result.rows) {
+        logger.warn(`Driver ${trip.driver_id} no-show for trip ${trip.trip_id}. Scheduled time passed by 15+ mins.`);
+
+        // 1. Penalize Driver (Rating - 0.1, min 1.0)
+        if (trip.driver_id) {
+          const { TripTransactionService } = require('../triptransactions/triptransaction.service');
+          const { ActorType, TripEventType } = require('../../enums/triptransaction.enums');
+
+          // Log to trip_transactions so the driver sees this in their history as a penalty
+          await TripTransactionService.logEvent({
+            trip_id: trip.trip_id,
+            event_type: TripEventType.TripCancelled,
+            actor_type: ActorType.Driver, // Logged against the driver
+            actor_id: trip.driver_id,
+            currentSnapshot: trip,
+            notes: 'Driver did not start the scheduled ride on time (No-Show).',
+            metadata: { cancel_reason: 'DRIVER_NO_SHOW' },
+          });
+
+          await query(
+            `UPDATE drivers SET rating = GREATEST(1.0, rating - 0.1) WHERE id = $1`,
+            [trip.driver_id]
+          );
+          
+          // Notify driver of penalty
+          const driverQuery = await query('SELECT fcm_token FROM drivers WHERE id = $1', [trip.driver_id]);
+          if (driverQuery.rows.length > 0 && driverQuery.rows[0].fcm_token) {
+            await NotificationService.sendNotification(
+              driverQuery.rows[0].fcm_token,
+              'Ride Unassigned & Penalty Applied',
+              'You did not start the scheduled ride on time. The ride has been unassigned and your rating was slightly penalized.',
+              { type: 'TRIP_UNASSIGNED', trip_id: String(trip.trip_id) }
+            );
+          }
+          
+          emitToRoom(`driver_${trip.driver_id}`, 'TRIP_REMOVED', { tripId: trip.trip_id });
+        }
+
+        const redispatchCount = trip.re_dispatch_count || 0;
+        const MAX_REDISPATCH = 2; // User requested 2 times broadcast to all drivers
+
+        if (redispatchCount < MAX_REDISPATCH) {
+          // 2. Re-dispatch logic: Reset trip and broadcast to nearby online drivers
+          logger.info(`Re-dispatching trip ${trip.trip_id} (Attempt ${redispatchCount + 1}/${MAX_REDISPATCH})`);
+          
+          // Reset for Redispatch
+          const resetTrip = await TripRepository.resetForRedispatch(trip.trip_id, trip.driver_id);
+
+          // CRITICAL PRODUCTION FIX: Advance scheduled_start_time so the `autoCancelOverdueScheduledRides`
+          // cron job doesn't instantly cancel this re-dispatched ride (since it looks for REQUESTED rides older than 10 mins).
+          await query(
+            `UPDATE trips SET scheduled_start_time = NOW() + INTERVAL '10 minutes' WHERE trip_id = $1`,
+            [trip.trip_id]
+          );
+
+          // Notify User
+          const userQuery = await query('SELECT fcm_token FROM users WHERE id = $1', [trip.user_id]);
+          if (userQuery.rows.length > 0 && userQuery.rows[0].fcm_token) {
+            await NotificationService.sendNotification(
+              userQuery.rows[0].fcm_token,
+              'Finding Another Driver',
+              'Your scheduled driver did not show up. We are looking for another driver nearby.',
+              { type: 'RIDE_REASSIGNING', trip_id: String(trip.trip_id) }
+            );
+          }
+          
+          emitToRoom(`user_${trip.user_id}`, 'RIDE_REASSIGNING', { tripId: trip.trip_id, reDispatchCount: redispatchCount + 1 });
+
+          // Broadcast to nearby online drivers (acting like a live request now)
+          const rejectedDriverIds = resetTrip.rejected_drivers || [];
+          const nearbyDrivers = await DriverService.getAvailableDrivers(
+            Number(resetTrip.pickup_lng),
+            Number(resetTrip.pickup_lat),
+            Number(process.env.SEARCH_RADIUS || 5000),
+            resetTrip.vehicle_type,
+            resetTrip.ride_type,
+            resetTrip.service_type,
+            rejectedDriverIds
+          );
+
+          for (const driver of nearbyDrivers) {
+            if (driver.fcm_token) {
+              await NotificationService.sendNotification(
+                driver.fcm_token,
+                'New Ride Request',
+                `A new ride request is available at ${resetTrip.pickup_address}.`,
+                { type: 'ride_request', trip_id: String(trip.trip_id) }
+              );
+            }
+          }
+          
+          const io = getIO();
+          io.emit('NEW_TRIP_REQUEST', { trip: resetTrip });
+        } else {
+          // 3. Fully cancel the trip because max re-dispatch reached
+          logger.info(`Max re-dispatch reached for trip ${trip.trip_id}. Fully cancelling.`);
+          
+          await query(
+            `UPDATE trips SET trip_status = 'CANCELLED', cancel_reason = 'DRIVER_NO_SHOW', cancel_by = 'SYSTEM', updated_at = NOW() WHERE trip_id = $1`,
+            [trip.trip_id]
+          );
+
+          await query(
+            `INSERT INTO trip_changes (trip_id, change_type, change_by, old_value, new_value, notes, created_at)
+             VALUES ($1, 'CANCELLED', 'SYSTEM', $2, 'CANCELLED', 'Auto cancelled: driver no-show and max redispatch reached', NOW())`,
+            [trip.trip_id, trip.trip_status]
+          );
+
+          // Notify User
+          const userQuery = await query('SELECT fcm_token FROM users WHERE id = $1', [trip.user_id]);
+          if (userQuery.rows.length > 0 && userQuery.rows[0].fcm_token) {
+            await NotificationService.sendNotification(
+              userQuery.rows[0].fcm_token,
+              'Ride Cancelled',
+              'Unfortunately, we could not find a driver for your scheduled ride. The ride has been cancelled.',
+              { type: 'TRIP_CANCELLED', trip_id: String(trip.trip_id) }
+            );
+          }
+          
+          emitToRoom(`user_${trip.user_id}`, 'TRIP_CANCELLED', { trip_id: trip.trip_id, reason: 'DRIVER_NO_SHOW' });
+        }
+      }
+    } catch (error: any) {
+      logger.error(`Error in autoCancelDriverNoShowRides: ${error.message}`);
     }
   },
 };

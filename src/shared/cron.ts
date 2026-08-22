@@ -45,6 +45,7 @@ export const initCronJobs = () => {
       await TripSchedulerService.processScheduledRides();
       await TripSchedulerService.broadcastUpcomingScheduledRides();
       await TripSchedulerService.autoCancelOverdueScheduledRides();
+      await TripSchedulerService.autoCancelDriverNoShowRides();
     } catch (error) {
       logger.error('Error in Trip Scheduler job:', error);
     } finally {
