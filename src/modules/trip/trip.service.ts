@@ -414,8 +414,8 @@ export const TripService = {
   async requestRideToMultipleDrivers(io: Server, tripData: any, drivers: any[]) {
     const tripId = tripData[0].trip_id;
 
-    const RETRY_INTERVAL = 20000; // 20 seconds
-    const MAX_RETRIES = 5;
+    const RETRY_INTERVAL = 20000; // 20 seconds (15s UI timer + 5s gap)
+    const MAX_RETRIES = 3; // Initial + 2 retries = 3 total broadcasts
     let retries = 0;
 
     // Cancel existing loop if already running
@@ -457,7 +457,7 @@ export const TripService = {
           distanceToUser: driver.distance_meters,
           eta: driver.eta || null,
 
-          remaining: 20, // UI Timer reset
+          remaining: 15, // UI Timer reset (15s for UI, leaving 5s gap in 20s interval)
           createdAt: new Date().toISOString(), // 🕒 Time sync for background/cold-start
         };
 
@@ -487,7 +487,7 @@ export const TripService = {
               drop_lng: String(tripData[0].drop_lng),
               distanceToUser: String(driver.distance_meters || '0'),
               eta: String(driver.eta || '1'),
-              remaining: '20',
+              remaining: '15',
               tripId: String(tripId)
             }
           ).catch((err) =>
@@ -908,10 +908,13 @@ export const TripService = {
     });
 
     // 🛡️ PRODUCTION: Also emit TRIP_REMOVED so the driver screen clears immediately
+    // Stop any active broadcasts and emit to all drivers to dismiss alert cards
     try {
-      if (trip?.driver_id) {
-        emitToRoom(`driver_${trip.driver_id}`, 'TRIP_REMOVED', { tripId: tripId });
+      if (tripBroadcastTimers.has(tripId)) {
+        clearInterval(tripBroadcastTimers.get(tripId)!);
+        tripBroadcastTimers.delete(tripId);
       }
+      emitTripRemoved(tripId);
     } catch (e) {
       logger.error('Failed to emit TRIP_REMOVED on cancellation:', e);
     }
