@@ -34,6 +34,8 @@ async function createNewUser(
   device_id: string,
   referred_by?: string
 ) {
+  const finalDeviceId = device_id || null;
+
   const baseInput: any = {
     first_name: '',
     last_name: '',
@@ -41,7 +43,7 @@ async function createNewUser(
     email: null,
     role,
     status: UserStatus.ACTIVE,
-    device_id,
+    device_id: finalDeviceId,
     onboarding_status:
       role === 'driver' ? DriverOnboardingStatus.PHONE_VERIFIED : OnboardingStatus.PHONE_VERIFIED,
     date_of_birth: null,
@@ -50,8 +52,8 @@ async function createNewUser(
   };
 
   if (role === 'driver') {
-    if (device_id) {
-      await query(`UPDATE drivers SET device_id = NULL WHERE device_id = $1`, [device_id]);
+    if (finalDeviceId) {
+      await query(`UPDATE drivers SET device_id = NULL WHERE device_id = $1`, [finalDeviceId]);
     }
     const driverInput = {
       ...baseInput,
@@ -69,8 +71,8 @@ async function createNewUser(
   }
 
   if (role === 'customer') {
-    if (device_id) {
-      await query(`UPDATE users SET device_id = NULL WHERE device_id = $1`, [device_id]);
+    if (finalDeviceId) {
+      await query(`UPDATE users SET device_id = NULL WHERE device_id = $1`, [finalDeviceId]);
     }
     const newUser = await UserRepository.createUser(baseInput); // only common fields
     return {
@@ -549,14 +551,18 @@ export const AuthService = {
         }
       }
 
-      // ✅ Always update device_id in users table
-      await AuthRepository.userDeviceIDUpdate(userId, device_id, role, fcm_token);
-      logger.info(`[OTP-VERIFY] Step 6: Device ID "${device_id}" updated for ${role} ${userId}`);
+      // // ✅ Always update device_id in users table
+      // await AuthRepository.userDeviceIDUpdate(userId, device_id, role, fcm_token);
+      // logger.info(`[OTP-VERIFY] Step 6: Device ID "${device_id}" updated for ${role} ${userId}`);
 
       // ✅ Invalidate old sessions for this device tied to OTHER users
       if (device_id) {
         await AuthRepository.invalidateOtherUsersOnDevice(device_id, userId, role);
       }
+
+      // ✅ Always update device_id in users table
+      await AuthRepository.userDeviceIDUpdate(userId, device_id, role, fcm_token);
+      logger.info(`[OTP-VERIFY] Step 6: Device ID "${device_id}" updated for ${role} ${userId}`);
 
       // ✅ Always save session — regardless of allow_new_device
       await AuthRepository.upsertSession(userId, device_id, role, refreshToken, fcm_token);
@@ -564,12 +570,28 @@ export const AuthService = {
         `[OTP-VERIFY] Step 7: Session created for ${role} ${userId} — verification complete`
       );
 
+      // ✅ Check for pending account deletion request
+      let pendingDeletionInfo = null;
+      try {
+        const pendingDeletion = await UserRepository.getPendingDeletionRequest(userId);
+        if (pendingDeletion) {
+          pendingDeletionInfo = {
+            is_pending: true,
+            scheduled_date: pendingDeletion.scheduled_deletion_date,
+          };
+          logger.info(`Pending deletion request found for ${role} ${userId} during login.`);
+        }
+      } catch (err: any) {
+        logger.error(`Error checking deletion request for ${userId}: ${err.message}`);
+      }
+
       return {
         verified: true,
         userData: {
           ...userData,
           device_id,
         },
+        pending_deletion: pendingDeletionInfo,
         device_id,
         isNewUser: !isExistingUser,
         accessToken,
