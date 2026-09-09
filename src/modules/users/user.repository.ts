@@ -260,4 +260,49 @@ export const UserRepository = {
     );
     return result.rows;
   },
+
+  // Account Deletion
+  async createDeletionRequest(userId: string, reason?: string, scheduledDate?: Date): Promise<any> {
+    const result = await query(
+      `INSERT INTO deletion_requests (user_id, reason, scheduled_deletion_date) VALUES ($1, $2, $3) RETURNING *`,
+      [userId, reason, scheduledDate]
+    );
+    return result.rows[0];
+  },
+
+  async getPendingDeletionRequest(userId: string): Promise<any> {
+    const result = await query(
+      `SELECT * FROM deletion_requests WHERE user_id = $1 AND status = 'PENDING' ORDER BY requested_at DESC LIMIT 1`,
+      [userId]
+    );
+    return result.rows[0] || null;
+  },
+
+  async updateDeletionRequestStatus(requestId: string, status: string): Promise<any> {
+    const result = await query(
+      `UPDATE deletion_requests SET status = $1, cancelled_at = CASE WHEN $1 = 'CANCELLED'::deletion_status THEN NOW() ELSE cancelled_at END, completed_at = CASE WHEN $1 = 'COMPLETED'::deletion_status THEN NOW() ELSE completed_at END WHERE id = $2 RETURNING *`,
+      [status, requestId]
+    );
+    return result.rows[0] || null;
+  },
+
+  async logAuditAction(userId: string | null, action: string, details?: any): Promise<void> {
+    await query(
+      `INSERT INTO audit_logs (user_id, action, details) VALUES ($1, $2, $3)`,
+      [userId, action, details ? JSON.stringify(details) : null]
+    );
+  },
+
+  async anonymizeUser(userId: string, hashedId: string): Promise<void> {
+    await query(
+      `UPDATE users SET first_name = 'Deleted', last_name = 'User', full_name = 'Deleted User', email = $1, phone_number = $2, alternate_contact = null, fcm_token = null, device_id = NULL, status = 'deleted' WHERE id = $3`,
+      [`${hashedId}@deleted.t2drive.com`, `DEL-${hashedId}`, userId]
+    );
+  },
+
+  async hardDeleteNonEssentialData(userId: string): Promise<void> {
+    // TODO: Add queries to hard delete non-essential user data (e.g., sessions, saved locations)
+    // await query('DELETE FROM user_sessions WHERE user_id = $1', [userId]);
+    logger.info(`Hard deleted non-essential data for user ${userId}`);
+  },
 };

@@ -1,4 +1,4 @@
-import { Gender, UserRole, UserStatus, OnboardingStatus } from '../../enums/user.enums';
+import { Gender, UserRole, UserStatus, OnboardingStatus, DeletionStatus } from '../../enums/user.enums';
 export interface EmergencyContact {
   name: string;
   phone: string;
@@ -12,6 +12,9 @@ export interface User {
   phone_number: string;
   profile_url?: string;
   alternate_contact?: string;
+  password?: Text;
+  reset_token?: Text;
+  reset_token_expiry?: Date;
   gender?: Gender;
   role?: UserRole;
   user_code?: string;
@@ -41,9 +44,14 @@ export interface User {
   emergency_contacts?: EmergencyContact[];
   created_at?: Date;
   updated_at?: Date;
+  deleted_at?: Date;
+  is_deleted?: boolean;
+  language?: string;
+  phone_verified?: boolean;
   is_trip_verified?: boolean;
   referral_code?: string;
   referral_count?: number;
+  referred_by?: string;
   otp?: string;
   notes?: string;
   rating?: number;
@@ -51,4 +59,24 @@ export interface User {
   wallet_balance?: number;
   wallet_pin?: string;
   has_wallet_pin?: boolean;
+}
+
+export interface DeletionRequest {
+  id?: string;
+  user_id: string;
+  status: DeletionStatus;
+  reason?: string;
+  requested_at?: Date;
+  scheduled_deletion_date?: Date;
+  cancelled_at?: Date;
+  completed_at?: Date;
+}
+
+export interface AuditLog {
+  id?: string;
+  user_id: string | null;
+  action: string;
+  ip_address?: string;
+  created_at?: Date;
+  details?: Record<string, any>;
 }

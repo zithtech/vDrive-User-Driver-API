@@ -10,6 +10,7 @@ export const connectRedis = async (): Promise<void> => {
 
   const redisOptions = {
     lazyConnect: true,
+    enableOfflineQueue: false,
     // Finite (not null): when Redis is unreachable a command REJECTS after a few
     // retries instead of queueing forever, so callers' try/catch actually fire
     // (e.g. findNearbyDrivers falls back to PostGIS, lock acquisition fails safe).

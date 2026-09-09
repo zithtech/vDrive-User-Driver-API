@@ -424,4 +424,46 @@ export const UserController = {
       next(err);
     }
   },
+
+  // Account Deletion
+  async initiateDeleteAccount(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const result = await UserService.initiateDeleteAccount(id);
+      return successResponse(res, 200, result.message, result);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async verifyOTPForDelete(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { otp, reason } = req.body;
+      const result = await UserService.verifyOTPForDelete(id, otp, reason);
+      return successResponse(res, 200, result.message, result);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async cancelDeleteAccount(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const result = await UserService.cancelDeleteAccount(id);
+      return successResponse(res, 200, result.message, result);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getDeleteAccountStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const result = await UserService.getDeleteAccountStatus(id);
+      return successResponse(res, 200, 'Deletion status retrieved', result);
+    } catch (err) {
+      next(err);
+    }
+  },
 };

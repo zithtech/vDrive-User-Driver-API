@@ -8,6 +8,8 @@ import { logger } from './logger';
 import { CouponService } from '../modules/coupon-management/coupon.service';
 import { PromoService } from '../modules/promos/promo.service';
 import { NotificationService } from '../modules/notification-management/notification-management.service';
+import { UserService } from '../modules/users/user.service';
+import { query } from './database';
 
 export const initCronJobs = () => {
   // Daily at midnight
@@ -229,6 +231,33 @@ export const initCronJobs = () => {
       }
     } catch (error) {
       logger.error('Error in Stale Driver Cleanup job:', error);
+    } finally {
+      await releaseLock(lockKey);
+    }
+  });
+
+  // Account Deletion Pipeline: Daily at 2 AM
+  cron.schedule('0 2 * * *', async () => {
+    const lockKey = 'daily_account_deletion';
+    const hasLock = await acquireLock(lockKey, 3600);
+    if (!hasLock) return;
+
+    logger.info('Running daily account deletion job...');
+    try {
+      const pendingRequests = await query(
+        `SELECT * FROM deletion_requests WHERE status = 'PENDING' AND scheduled_deletion_date <= NOW()`
+      );
+
+      for (const req of pendingRequests.rows) {
+        try {
+          await UserService.executeScheduledDeletion(req.user_id);
+          logger.info(`Successfully processed account deletion for user: ${req.user_id}`);
+        } catch (err) {
+          logger.error(`Failed to process deletion for user ${req.user_id}:`, err);
+        }
+      }
+    } catch (error) {
+      logger.error('Error running account deletion job:', error);
     } finally {
       await releaseLock(lockKey);
     }

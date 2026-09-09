@@ -78,4 +78,30 @@ router.post('/wallet/:id/topup/order', UserController.createWalletTopupOrder);
 router.post('/wallet/:id/topup/verify', UserController.verifyWalletTopupPayment);
 router.post('/wallet/:id/pay-trip', UserController.payTripWithWallet);
 
+// ─────────── ACCOUNT DELETION ───────────
+router.post(
+  '/:id/delete/initiate',
+  validateParams(UserValidation.idValidation),
+  UserController.initiateDeleteAccount
+);
+
+router.post(
+  '/:id/delete/verify-otp',
+  validateParams(UserValidation.idValidation),
+  validateBody(UserValidation.verifyOTPForDeleteValidation),
+  UserController.verifyOTPForDelete
+);
+
+router.post(
+  '/:id/delete/cancel',
+  validateParams(UserValidation.idValidation),
+  UserController.cancelDeleteAccount
+);
+
+router.get(
+  '/:id/delete/status',
+  validateParams(UserValidation.idValidation),
+  UserController.getDeleteAccountStatus
+);
+
 export default router;
