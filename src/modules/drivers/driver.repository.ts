@@ -648,7 +648,7 @@ export const DriverRepository = {
       fcm_token: driver.fcm_token || undefined,
       referral_code: driver.referral_code || undefined,
       referred_by: driver.referred_by || undefined,
-      vdrive_id: driver.vdrive_id,
+      t2d_id: driver.t2d_id,
       current_lat: driver.current_lat,
       current_lng: driver.current_lng,
       current_heading: driver.current_heading,
