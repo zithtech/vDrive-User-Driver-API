@@ -53,4 +53,9 @@ export const UserValidation = {
     page: Joi.number().integer().min(1).optional(),
     limit: Joi.number().integer().min(1).max(100).optional(),
   }),
+
+  verifyOTPForDeleteValidation: Joi.object().keys({
+    otp: Joi.string().min(4).max(6).required(),
+    reason: Joi.string().max(255).optional(),
+  }).unknown(true),
 };

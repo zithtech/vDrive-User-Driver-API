@@ -42,3 +42,9 @@ export interface SessionPayload {
   deviceId: string;
   role: string;
 }
+
+export enum DeletionStatus {
+  PENDING = 'PENDING',
+  CANCELLED = 'CANCELLED',
+  COMPLETED = 'COMPLETED',
+}

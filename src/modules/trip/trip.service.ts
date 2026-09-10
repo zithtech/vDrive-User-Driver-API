@@ -511,32 +511,32 @@ export const TripService = {
           clearInterval(timer);
           tripBroadcastTimers.delete(tripId);
           
-          try {
-            const trip = await TripRepository.findById(tripId);
-            if (trip && trip.trip_status === TripStatus.REQUESTED) {
-              await TripService.cancelTrip(
-                tripId,
-                TripStatus.CANCELLED,
-                CancelReason.OTHER,
-                CancelBy.SYSTEM,
-                'Auto cancelled: Max retries reached with no driver acceptance'
-              );
+          // try {
+          //   const trip = await TripRepository.findById(tripId);
+          //   if (trip && trip.trip_status === TripStatus.REQUESTED) {
+          //     await TripService.cancelTrip(
+          //       tripId,
+          //       TripStatus.CANCELLED,
+          //       CancelReason.OTHER,
+          //       CancelBy.SYSTEM,
+          //       'Auto cancelled: Max retries reached with no driver acceptance'
+          //     );
               
-              emitToRoom(`user_${trip.user_id}`, 'TRIP_CANCELLED', { trip_id: tripId, reason: 'NO_DRIVER_AVAILABLE' });
+          //     emitToRoom(`user_${trip.user_id}`, 'TRIP_CANCELLED', { trip_id: tripId, reason: 'NO_DRIVER_AVAILABLE' });
               
-              const userfcmtoken = trip.user_id ? await UserRepository.getFcmTokenById(trip.user_id) : null;
-              if (userfcmtoken) {
-                await UserNotifications.rideCancelled(
-                  userfcmtoken,
-                  tripId,
-                  CancelReason.OTHER,
-                  CancelBy.SYSTEM
-                );
-              }
-            }
-          } catch (cancelErr: any) {
-            logger.error(`Error auto-cancelling trip ${tripId}: ${cancelErr.message}`);
-          }
+          //     const userfcmtoken = trip.user_id ? await UserRepository.getFcmTokenById(trip.user_id) : null;
+          //     if (userfcmtoken) {
+          //       await UserNotifications.rideCancelled(
+          //         userfcmtoken,
+          //         tripId,
+          //         CancelReason.OTHER,
+          //         CancelBy.SYSTEM
+          //       );
+          //     }
+          //   }
+          // } catch (cancelErr: any) {
+          //   logger.error(`Error auto-cancelling trip ${tripId}: ${cancelErr.message}`);
+          // }
           return;
         }
 
