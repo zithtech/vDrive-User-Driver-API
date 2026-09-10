@@ -78,7 +78,11 @@ export const findNearbyDriversValidator = celebrate({
       .required()
       .messages({ 'any.required': 'Latitude is required for location search' }),
 
-    newTrip: TripValidation.createTripValidation.unknown(true).required(),
+    newTrip: TripValidation.createTripValidation.unknown(true).required()
+    .messages({
+      'any.required': 'New trip is required for location search',
+      'object.base': 'New trip must be an object',
+    }),
     // Radius: optional, defaults to 5km (5000 meters)
     radius: Joi.number()
       .min(100)
