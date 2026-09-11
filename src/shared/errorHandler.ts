@@ -72,6 +72,7 @@ export const errorHandler = (err: any, req: Request, res: Response, _next: NextF
 
     message = 'Validation error';
     errorDetails = validationErrors;
+    console.log(`Validation Error Details:`, JSON.stringify(validationErrors));
   }
 
   const error = {

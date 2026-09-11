@@ -285,12 +285,12 @@ export const tripCodeRule = Joi.string().optional().messages({
   'string.base': 'trip_code must be a string',
 });
 
-export const vehicleModelRule = Joi.string().optional().messages({
+export const vehicleModelRule = Joi.string().allow('',null).optional().messages({
   'string.base': 'vehicle_model must be a string',
 });
 
 export const vehicleTypeRule = enumString(Object.values(VehicleType))
-  .optional()
+  .allow('',null)
   .messages({
     'any.only': `vehicle_type must be one of [${Object.values(VehicleType).join(', ')}]`,
     'string.base': 'vehicle_type must be a string',
@@ -315,10 +315,10 @@ export const appliedCouponIdRule = Joi.string().allow('', null).optional().messa
   'string.base': 'applied_coupon_id must be a string',
 });
 
-export const packageHoursRule = Joi.number().optional().messages({
+export const packageHoursRule = Joi.number().allow('', null).optional().messages({
   'number.base': 'package_hours must be a number',
 });
 
-export const outstationTripTypeRule = Joi.string().optional().messages({
+export const outstationTripTypeRule = Joi.string().allow('', null).optional().messages({
   'string.base': 'outstation_trip_type must be a string',
 });
