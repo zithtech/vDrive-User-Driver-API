@@ -20,7 +20,20 @@ interface ChatMessage {
   timestamp: number;
 }
 
+const userPresence = new Map();
+
 export default function registerChatSocket(io: Server, socket: Socket) {
+  // Handle chat presence
+  socket.on('chatPresence', (data) => {
+    userPresence.set(data.userId, { ...data, socketId: socket.id });
+  });
+
+  socket.on('disconnect', () => {
+    for (const [userId, data] of userPresence.entries()) {
+      if (data.socketId === socket.id) userPresence.delete(userId);
+    }
+  });
+
   // User/Driver joins chat room
   socket.on('joinChat', async ({ rideId, userId }) => {
     const room = `chat_${rideId}`;
@@ -84,23 +97,42 @@ export default function registerChatSocket(io: Server, socket: Socket) {
 
     // Send push notification to the recipient
     try {
-      const { rows } = await query(`SELECT user_id, driver_id FROM trips WHERE trip_id = $1 OR id = $1`, [msg.rideId]);
+      const { rows } = await query(`SELECT user_id, driver_id FROM trips WHERE trip_id = $1`, [msg.rideId]);
       if (rows.length > 0) {
         const trip = rows[0];
-        const senderName = 'New Message'; // Optional: could fetch real name from DB if needed
+        // const senderDetails = await query(`SELECT first_name, last_name FROM users WHERE user_id = $1`, [msg.senderId]);
+        // const senderName = 'New Message'; // Optional: could fetch real name from DB if needed
 
         // If sender is user, notify driver
         if (msg.senderId === trip.user_id && trip.driver_id) {
-          const fcmToken = await DriverRepository.getFcmTokenById(trip.driver_id);
-          if (fcmToken) {
-            await DriverNotifications.chatMessage(fcmToken, msg.text || '📸 Image', msg.rideId, senderName);
+          const {rows: senderDetails} = await query(`SELECT first_name, last_name FROM users WHERE id = $1`, [msg.senderId]);
+          const senderName = senderDetails[0].first_name + ' ' + senderDetails[0].last_name;
+           logger.info(`Sender Name: ${senderName}`);
+          logger.info(`Sender Details: ${senderDetails[0]}`);
+          logger.info(`Sender Details: ${JSON.stringify(senderDetails[0])}`);
+          const recipientPresence = userPresence.get(trip.driver_id);
+          const isRecipientInChat = recipientPresence?.currentScreen === 'TripChatScreen' && recipientPresence?.appState === 'active';
+          if (!isRecipientInChat) {
+            const fcmToken = await DriverRepository.getFcmTokenById(trip.driver_id);
+            if (fcmToken) {
+              await DriverNotifications.chatMessage(fcmToken, msg.text || '📸 Image', msg.rideId, senderName);
+            }
           }
         } 
         // If sender is driver, notify user
         else if (msg.senderId === trip.driver_id && trip.user_id) {
-          const fcmToken = await UserRepository.getFcmTokenById(trip.user_id);
-          if (fcmToken) {
-            await UserNotifications.chatMessage(fcmToken, msg.text || '📸 Image', msg.rideId, senderName);
+          const {rows: senderDetails} = await query(`SELECT first_name, last_name FROM drivers WHERE id = $1`, [msg.senderId]);
+          const senderName = senderDetails[0].first_name + ' ' + senderDetails[0].last_name;
+          logger.info(`Sender Name: ${senderName}`);
+          logger.info(`Sender Details: ${senderDetails[0]}`);
+          logger.info(`Sender Details: ${JSON.stringify(senderDetails[0])}`);
+          const recipientPresence = userPresence.get(trip.user_id);
+          const isRecipientInChat = recipientPresence?.currentScreen === 'TripChatScreen' && recipientPresence?.appState === 'active';
+          if (!isRecipientInChat) {
+            const fcmToken = await UserRepository.getFcmTokenById(trip.user_id);
+            if (fcmToken) {
+              await UserNotifications.chatMessage(fcmToken, msg.text || '📸 Image', msg.rideId, senderName);
+            }
           }
         }
       }
