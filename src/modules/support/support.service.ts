@@ -4,6 +4,9 @@ import { notificationService } from '../../services/notificationService';
 import { DriverRepository } from '../drivers/driver.repository';
 import { UserRepository } from '../users/user.repository';
 import { notifyAdmin } from '../../shared/eventBus';
+import { getIO } from '../../sockets/socket';
+
+const notificationThrottleMap = new Map<string, number>();
 
 export const SupportService = {
   /* ======================== FAQs ======================== */
@@ -82,7 +85,27 @@ export const SupportService = {
 
   async updateTicketStatus(id: string, status: any, adminNotes?: string) {
     logger.info(`[Support] Updating ticket ${id} status to: ${status}`);
-    return SupportRepository.updateTicketStatus(id, status, adminNotes);
+    const ticket = await SupportRepository.updateTicketStatus(id, status, adminNotes);
+    
+    try {
+      if (ticket && ticket.driver_id) {
+        const fcmToken = await DriverRepository.getFcmTokenById(ticket.driver_id);
+        if (fcmToken) {
+          await notificationService.sendPushNotification(fcmToken, {
+            title: 'Support Ticket Updated',
+            body: `Your support ticket has been updated to: ${status}.`,
+            data: {
+              type: 'SUPPORT_TICKET_UPDATE',
+              ticketId: ticket.id,
+            },
+          });
+        }
+      }
+    } catch (err) {
+      logger.error(`Failed to send support ticket status update notification to driver: ${err}`);
+    }
+    
+    return ticket;
   },
 
   async getTicketMessages(ticketId: string) {
@@ -97,21 +120,39 @@ export const SupportService = {
   }) {
     const newMessage = await SupportRepository.saveMessage(data);
 
-    // If admin replies, notify the driver
-    if (data.sender_type === 'admin') {
+    // If admin, bot, or system replies, notify the driver
+    if (data.sender_type === 'admin' || data.sender_type === 'bot' || data.sender_type === 'system') {
       try {
-        const ticket = await SupportRepository.findTicketById(data.ticket_id);
-        if (ticket && ticket.driver_id) {
-          const fcmToken = await DriverRepository.getFcmTokenById(ticket.driver_id);
-          if (fcmToken) {
-            await notificationService.sendPushNotification(fcmToken, {
-              title: 'Support Update',
-              body: `An agent replied to your ticket: "${data.message.substring(0, 50)}..."`,
-              data: {
-                type: 'SUPPORT_REPLY',
-                ticketId: data.ticket_id,
-              },
-            });
+        const roomName = `support_ticket_${data.ticket_id}`;
+        const io = getIO();
+        const room = io?.sockets?.adapter?.rooms?.get(roomName);
+        
+        // If the room has <= 1 connected socket, the driver is likely not actively viewing it
+        // Or if the driver is not in the room at all
+        const isLikelyInactive = !room || room.size <= 1;
+
+        if (isLikelyInactive) {
+          const now = Date.now();
+          const lastSent = notificationThrottleMap.get(`driver_${data.ticket_id}`) || 0;
+          
+          // Throttle: 60 seconds
+          if (now - lastSent > 60000) {
+            notificationThrottleMap.set(`driver_${data.ticket_id}`, now);
+            
+            const ticket = await SupportRepository.findTicketById(data.ticket_id);
+            if (ticket && ticket.driver_id) {
+              const fcmToken = await DriverRepository.getFcmTokenById(ticket.driver_id);
+              if (fcmToken) {
+                await notificationService.sendPushNotification(fcmToken, {
+                  title: 'Support Update',
+                  body: `New message on your ticket: "${data.message.substring(0, 50)}..."`,
+                  data: {
+                    type: 'SUPPORT_TICKET_UPDATE',
+                    ticketId: data.ticket_id,
+                  },
+                });
+              }
+            }
           }
         }
       } catch (err) {
@@ -168,7 +209,27 @@ export const SupportService = {
 
   async updateUserTicketStatus(id: string, status: any, adminNotes?: string) {
     logger.info(`[Support] Updating user ticket ${id} status to: ${status}`);
-    return SupportRepository.updateUserTicketStatus(id, status, adminNotes);
+    const ticket = await SupportRepository.updateUserTicketStatus(id, status, adminNotes);
+
+    try {
+      if (ticket && ticket.user_id) {
+        const fcmToken = await UserRepository.getFcmTokenById(ticket.user_id);
+        if (fcmToken) {
+          await notificationService.sendPushNotification(fcmToken, {
+            title: 'Support Ticket Updated',
+            body: `Your support ticket has been updated to: ${status}.`,
+            data: {
+              type: 'SUPPORT_TICKET_UPDATE',
+              ticketId: ticket.id,
+            },
+          });
+        }
+      }
+    } catch (err) {
+      logger.error(`Failed to send support ticket status update notification to user: ${err}`);
+    }
+
+    return ticket;
   },
 
   async getUserTicketMessages(ticketId: string) {
@@ -183,21 +244,37 @@ export const SupportService = {
   }) {
     const newMessage = await SupportRepository.saveUserMessage(data);
 
-    // If admin replies, notify the user
-    if (data.sender_type === 'admin') {
+    // If admin, bot, or system replies, notify the user
+    if (data.sender_type === 'admin' || data.sender_type === 'bot' || data.sender_type === 'system') {
       try {
-        const ticket = await SupportRepository.findUserTicketById(data.ticket_id);
-        if (ticket && ticket.user_id) {
-          const fcmToken = await UserRepository.getFcmTokenById(ticket.user_id);
-          if (fcmToken) {
-            await notificationService.sendPushNotification(fcmToken, {
-              title: 'Support Update',
-              body: `An agent replied to your ticket: "${data.message.substring(0, 50)}..."`,
-              data: {
-                type: 'USER_SUPPORT_REPLY',
-                ticketId: data.ticket_id,
-              },
-            });
+        const roomName = `support_ticket_${data.ticket_id}`;
+        const io = getIO();
+        const room = io?.sockets?.adapter?.rooms?.get(roomName);
+        
+        const isLikelyInactive = !room || room.size <= 1;
+
+        if (isLikelyInactive) {
+          const now = Date.now();
+          const lastSent = notificationThrottleMap.get(`user_${data.ticket_id}`) || 0;
+          
+          // Throttle: 60 seconds
+          if (now - lastSent > 60000) {
+            notificationThrottleMap.set(`user_${data.ticket_id}`, now);
+            
+            const ticket = await SupportRepository.findUserTicketById(data.ticket_id);
+            if (ticket && ticket.user_id) {
+              const fcmToken = await UserRepository.getFcmTokenById(ticket.user_id);
+              if (fcmToken) {
+                await notificationService.sendPushNotification(fcmToken, {
+                  title: 'Support Update',
+                  body: `New message on your ticket: "${data.message.substring(0, 50)}..."`,
+                  data: {
+                    type: 'SUPPORT_TICKET_UPDATE',
+                    ticketId: data.ticket_id,
+                  },
+                });
+              }
+            }
           }
         }
       } catch (err) {
