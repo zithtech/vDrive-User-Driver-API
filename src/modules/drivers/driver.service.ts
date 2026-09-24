@@ -384,6 +384,26 @@ export const DriverService = {
       const redis = getRedisClient();
 
       await redis.sadd('online_drivers', driverId);
+
+      // Seed driver's current location into Redis GEO index immediately.
+      // Without this, the nearby search would use stale/missing coordinates
+      // until the first socket 'driver_location_update' event arrives.
+      if (driver.current_lat && driver.current_lng) {
+        await redis.geoadd(
+          'driver_locations',
+          Number(driver.current_lng),
+          Number(driver.current_lat),
+          driverId
+        );
+        logger.info(
+          `Seeded Redis location for driver ${driverId}: lat=${driver.current_lat}, lng=${driver.current_lng}`
+        );
+      } else {
+        logger.warn(
+          `Driver ${driverId} went online but has no stored lat/lng. Waiting for socket location update.`
+        );
+      }
+
       notifyAdmin('DRIVER_STATUS_UPDATE', { driverId, status: 'ONLINE', timestamp: Date.now() });
     } catch (err) {
       logger.error(`Redis goOnline error for driver ${driverId}: ${err}`);
@@ -460,9 +480,9 @@ export const DriverService = {
     if (radius) {
       drivers = await DriverRepository.findNearbyDrivers(lng, lat, radius, newTrip.ride_type);
     } else {
-      const result = await DriverRepository.findNearbyDriversExpanding(lng, lat, newTrip.ride_type);
-      drivers = result.drivers;
-      searchedRadius = result.searchedRadius;
+      // Use a maximum search radius of 20000m. The trip service will handle cumulative ring dispatching.
+      searchedRadius = 20000;
+      drivers = await DriverRepository.findNearbyDrivers(lng, lat, searchedRadius, newTrip.ride_type);
     }
 
     if (!drivers || drivers.length === 0) {
@@ -471,12 +491,10 @@ export const DriverService = {
 
     if (drivers && drivers.length > 0) {
       // Average speed 30km/h => 500 meters/min
-      const driversWithEta = drivers.map((d) => ({
+      drivers = drivers.map((d) => ({
         ...d,
         eta: Math.ceil(parseInt(d.distance_meters) / config.avgSpeedMetersPerMin) || 1,
       }));
-
-      await TripService.requestRideToMultipleDrivers(io, [newTrip], driversWithEta);
     }
     return { drivers, searchedRadius };
   },

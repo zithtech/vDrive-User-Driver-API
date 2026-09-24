@@ -220,7 +220,14 @@ export const initCronJobs = () => {
         const client = await getClient();
         try {
           await client.query(
-            'UPDATE drivers SET is_online = FALSE WHERE id = ANY($1::uuid[])',
+            `UPDATE drivers 
+             SET 
+               is_online = FALSE,
+               availability = jsonb_set(
+                 jsonb_set(COALESCE(availability, '{}'::jsonb), '{online}', 'false'::jsonb),
+                 '{status}', '"OFFLINE"'::jsonb
+               )
+             WHERE id = ANY($1::uuid[])`,
             [staleDriverIds]
           );
         } finally {

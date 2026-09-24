@@ -648,7 +648,7 @@ export const DriverRepository = {
       fcm_token: driver.fcm_token || undefined,
       referral_code: driver.referral_code || undefined,
       referred_by: driver.referred_by || undefined,
-      vdrive_id: driver.vdrive_id,
+      t2d_id: driver.t2d_id,
       current_lat: driver.current_lat,
       current_lng: driver.current_lng,
       current_heading: driver.current_heading,
@@ -716,6 +716,16 @@ export const DriverRepository = {
         'ASC'
       )) as any[];
 
+      // Log how many total drivers are in Redis for debugging
+      const totalInRedis = await redis.zcard('driver_locations');
+      logger.info(`Redis GEORADIUS: found ${nearbyFromRedis?.length || 0} drivers within ${radiusMeters}m (total drivers in Redis: ${totalInRedis})`);
+
+      if (nearbyFromRedis && nearbyFromRedis.length > 0) {
+        nearbyFromRedis.forEach((entry: any) => {
+          logger.info(`  -> Driver ${entry[0]}: ${Math.round(parseFloat(entry[1]))}m away`);
+        });
+      }
+
       if (!nearbyFromRedis || nearbyFromRedis.length === 0) {
         logger.info('No drivers found in Redis, falling back to PostGIS');
         return await this.findNearbyDriversPostGIS(lng, lat, radiusMeters, rideType);
@@ -775,6 +785,7 @@ export const DriverRepository = {
   },
 
   async findNearbyDriversPostGIS(lng: number, lat: number, radiusMeters: number, rideType?: string) {
+    logger.info(`findNearbyDriversPostGIS: lng=${lng}, lat=${lat}, radius=${radiusMeters}, rideType=${rideType}`);
     const sqlQuery = `
        SELECT
         d.id,
@@ -796,6 +807,8 @@ export const DriverRepository = {
       AND d.status = 'active'
       AND ds.status = 'active'
       AND ds.expiry_date >= NOW()
+      AND d.last_active >= NOW() - INTERVAL '5 minutes'
+      AND d.location IS NOT NULL
       AND ST_DWithin(d.location, ST_MakePoint($1, $2)::geography, $3)
       AND (
         ($4::text IN ('ONE_WAY', 'ROUND_TRIP') AND rp.plan_name IN ('Basic', 'Elite', 'Premium'))
@@ -807,6 +820,11 @@ export const DriverRepository = {
     ORDER BY distance_meters ASC;
     `;
     const { rows } = await query(sqlQuery, [lng, lat, radiusMeters, rideType || null]);
+    if (rows.length > 0) {
+      logger.info(`PostGIS found ${rows.length} drivers. Closest: ${rows[0].id} at ${rows[0].distance_meters}m, Farthest: ${rows[rows.length - 1].id} at ${rows[rows.length - 1].distance_meters}m`);
+    } else {
+      logger.info('PostGIS found 0 drivers within radius');
+    }
     return rows;
   },
 

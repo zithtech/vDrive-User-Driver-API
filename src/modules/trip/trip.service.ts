@@ -8,7 +8,7 @@ import { TripTransactionService } from '../triptransactions/triptransaction.serv
 import { ActorType, TripEventType } from '../../enums/triptransaction.enums';
 import { tripTransactionLogger } from '../triptransactions/triptransactionlogger';
 import { DriverNotifications, UserNotifications } from '../notifications';
-import { CancelBy, CancelReason, TripStatus } from '../../enums/trip.enums';
+import { CancelBy, CancelReason, TripStatus, RideType } from '../../enums/trip.enums';
 import {
   broadcastTripUpdate,
   emitToRoom,
@@ -20,7 +20,7 @@ import { DriverAvailabilityStatus } from '../drivers/driver.model';
 import { TripSocketEvent } from '../../sockets/socket.types';
 import { logger } from '../../shared/logger';
 import { notifyAdmin } from '../../shared/eventBus';
-import { getRedisClient } from '../../shared/redis';
+import { getRedisClient, getPubClient } from '../../shared/redis';
 import { ReferralService } from '../referrals/referral.service';
 import { ReferralRepository } from '../referrals/referral.repository';
 import { DriverReferralService } from '../driver-referrals/driver-referral.service';
@@ -28,6 +28,35 @@ import { CouponService } from '../coupon-management/coupon.service';
 import { UserStatus } from '../../enums/user.enums';
 // Keep global map
 const tripBroadcastTimers = new Map<string, NodeJS.Timeout>();
+// 🛡️ Track cancelled trip IDs to block stale re-broadcasts
+const cancelledTripIds = new Set<string>();
+
+// ─── Redis Pub/Sub: Cross-instance broadcast cancellation ───────────
+const STOP_BROADCAST_CHANNEL = 'STOP_BROADCAST';
+
+export async function initBroadcastCancellationListener(): Promise<void> {
+  try {
+    // Create a dedicated subscriber (the shared subClient is used by Socket.IO adapter)
+    const dedicatedSub = getRedisClient().duplicate();
+    await dedicatedSub.connect(); // Must connect explicitly (lazyConnect inherited)
+    await dedicatedSub.subscribe(STOP_BROADCAST_CHANNEL);
+    dedicatedSub.on('message', (channel: string, tripId: string) => {
+      if (channel === STOP_BROADCAST_CHANNEL) {
+        const id = String(tripId);
+        logger.info(`🛑 [Redis] Received STOP_BROADCAST for trip ${id}`);
+        cancelledTripIds.add(id);
+        if (tripBroadcastTimers.has(id)) {
+          clearInterval(tripBroadcastTimers.get(id)!);
+          tripBroadcastTimers.delete(id);
+          logger.info(`🛑 [Redis] Cleared broadcast timer for trip ${id}`);
+        }
+      }
+    });
+    logger.info('✅ Broadcast cancellation listener initialized (Redis Pub/Sub)');
+  } catch (err) {
+    logger.error('Failed to init broadcast cancellation listener:', err);
+  }
+}
 
 async function publishAdminTripUpdate(tripId: string, status: string, driverId?: string) {
   try {
@@ -77,6 +106,10 @@ export const TripService = {
     return trip;
   },
   async createTrip(data: Partial<Trip>, couponCode?: string) {
+    if (data.package_hours && data.package_hours > 0 && data.ride_type === RideType.ONE_WAY) {
+      data.ride_type = RideType.ROUND_TRIP;
+    }
+
     // Generate a 4-digit OTP
     // data.otp = Math.floor(1000 + Math.random() * 9000).toString();
 
@@ -269,6 +302,10 @@ export const TripService = {
             pickup_lng: String(tripData.pickup_lng || ''),
             drop_lat: String(tripData.drop_lat || ''),
             drop_lng: String(tripData.drop_lng || ''),
+            distance_km: String(tripData.distance_km || '0'),
+            trip_duration_minutes: String(tripData.trip_duration_minutes || '0'),
+            package_hours: String(tripData.package_hours || '0'),
+            outstation_trip_type: String(tripData.outstation_trip_type || ''),
             distanceToUser: String(tripData.distanceToUser || '0'),
             eta: String(tripData.eta || '1'),
             remaining: '20',
@@ -412,11 +449,21 @@ export const TripService = {
   },
 
   async requestRideToMultipleDrivers(io: Server, tripData: any, drivers: any[]) {
-    const tripId = tripData[0].trip_id;
+    const tripId = String(tripData[0].trip_id);
 
-    const RETRY_INTERVAL = 20000; // 20 seconds
-    const MAX_RETRIES = 5;
-    let retries = 0;
+    const RETRY_INTERVAL = 20000; // 20 seconds (15s UI timer + 5s gap)
+    const RINGS = [500, 2000, 5000, 10000, 20000];
+    let currentRingIndex = 0;
+
+
+    // Sort drivers by distance to ensure correctly structured rings
+    const sortedDrivers = [...drivers].sort((a, b) => a.distance_meters - b.distance_meters);
+
+    // 🛡️ If this trip was already cancelled, don't start broadcasting
+    if (cancelledTripIds.has(tripId)) {
+      logger.info(`🛑 Trip ${tripId} already cancelled. Skipping broadcast.`);
+      return { success: false, reason: 'cancelled' };
+    }
 
     // Cancel existing loop if already running
     if (tripBroadcastTimers.has(tripId)) {
@@ -425,9 +472,31 @@ export const TripService = {
     }
 
     const broadcast = () => {
-      logger.info(`📡 Broadcasting Trip ${tripId} to ${drivers.length} drivers`);
+      // 🛡️ Check if trip was cancelled between interval ticks
+      if (cancelledTripIds.has(tripId)) {
+        logger.info(`🛑 Trip ${tripId} was cancelled. Aborting broadcast.`);
+        if (tripBroadcastTimers.has(tripId)) {
+          clearInterval(tripBroadcastTimers.get(tripId)!);
+          tripBroadcastTimers.delete(tripId);
+        }
+        return false; // indicates we should stop
+      }
 
-      drivers.forEach((driver) => {
+      let ringDrivers: any[] = [];
+      let currentRingDistance = 0;
+
+      // Strictly wait and expand ring-by-ring without fast-forwarding
+      currentRingDistance = RINGS[currentRingIndex];
+      ringDrivers = sortedDrivers.filter((d) => d.distance_meters <= currentRingDistance);
+
+      if (ringDrivers.length === 0) {
+        logger.info(`📡 Ring ${currentRingDistance}m is empty for Trip ${tripId}. Waiting for next interval.`);
+        return true; // indicates we should continue to next ring interval
+      }
+
+      logger.info(`📡 Broadcasting Trip ${tripId} to ${ringDrivers.length} drivers in ring ${currentRingDistance}m`);
+
+      ringDrivers.forEach((driver) => {
         // Robust parsing of passenger details if it's a string
         let passengerDetails = tripData[0].passenger_details;
         if (typeof passengerDetails === 'string') {
@@ -439,6 +508,7 @@ export const TripService = {
         }
 
         const payload = {
+          ...tripData[0], // Include all original trip fields (distance_km, package_hours, etc.)
           tripId,
           pickup: tripData[0].pickup_address,
           drop: tripData[0].drop_address,
@@ -452,12 +522,16 @@ export const TripService = {
           pickup_lng: tripData[0].pickup_lng,
           drop_lat: tripData[0].drop_lat,
           drop_lng: tripData[0].drop_lng,
+          distance_km: tripData[0].distance_km,
+          trip_duration_minutes: tripData[0].trip_duration_minutes,
+          package_hours: tripData[0].package_hours,
+          outstation_trip_type: tripData[0].outstation_trip_type,
 
           // Driver-specific data
           distanceToUser: driver.distance_meters,
           eta: driver.eta || null,
 
-          remaining: 20, // UI Timer reset
+          remaining: 15, // UI Timer reset (15s for UI, leaving 5s gap in 20s interval)
           createdAt: new Date().toISOString(), // 🕒 Time sync for background/cold-start
         };
 
@@ -466,8 +540,8 @@ export const TripService = {
         );
         emitToRoom(`driver_${driver.id}`, TripSocketEvent.NEW_TRIP_REQUEST, payload);
 
-        // ✅ Also send Push Notification (Only on first broadcast to avoid spamming)
-        if (retries === 0 && driver.fcm_token) {
+        // ✅ Also send Push Notification (sent on every ring so the app wakes up and shows the popup)
+        if (driver.fcm_token) {
           DriverNotifications.newRideRequest(
             driver.fcm_token,
             String(tripId),
@@ -485,9 +559,13 @@ export const TripService = {
               pickup_lng: String(tripData[0].pickup_lng),
               drop_lat: String(tripData[0].drop_lat),
               drop_lng: String(tripData[0].drop_lng),
+              distance_km: String(tripData[0].distance_km || '0'),
+              trip_duration_minutes: String(tripData[0].trip_duration_minutes || '0'),
+              package_hours: String(tripData[0].package_hours || '0'),
+              outstation_trip_type: String(tripData[0].outstation_trip_type || ''),
               distanceToUser: String(driver.distance_meters || '0'),
               eta: String(driver.eta || '1'),
-              remaining: '20',
+              remaining: '15',
               tripId: String(tripId)
             }
           ).catch((err) =>
@@ -495,48 +573,30 @@ export const TripService = {
           );
         }
       });
+      return true; // indicates we should continue
     };
 
     // First Broadcast
-    broadcast();
+    let shouldContinue = broadcast();
+
+    if (!shouldContinue || currentRingIndex >= RINGS.length) {
+      if (tripBroadcastTimers.has(tripId)) {
+        clearInterval(tripBroadcastTimers.get(tripId)!);
+        tripBroadcastTimers.delete(String(tripId));
+      }
+      return { success: true };
+    }
 
     // Interval
     const timer = setInterval(async () => {
-      retries++;
+      currentRingIndex++;
 
       try {
-        // Stop if too many retries
-        if (retries >= MAX_RETRIES) {
-          logger.info(`🛑 Max retries reached. Stopping trip broadcast ${tripId}`);
+        // Stop if all rings are exhausted
+        if (currentRingIndex >= RINGS.length) {
+          logger.info(`🛑 Max rings reached. Stopping trip broadcast ${tripId}`);
           clearInterval(timer);
-          tripBroadcastTimers.delete(tripId);
-          
-          // try {
-          //   const trip = await TripRepository.findById(tripId);
-          //   if (trip && trip.trip_status === TripStatus.REQUESTED) {
-          //     await TripService.cancelTrip(
-          //       tripId,
-          //       TripStatus.CANCELLED,
-          //       CancelReason.OTHER,
-          //       CancelBy.SYSTEM,
-          //       'Auto cancelled: Max retries reached with no driver acceptance'
-          //     );
-              
-          //     emitToRoom(`user_${trip.user_id}`, 'TRIP_CANCELLED', { trip_id: tripId, reason: 'NO_DRIVER_AVAILABLE' });
-              
-          //     const userfcmtoken = trip.user_id ? await UserRepository.getFcmTokenById(trip.user_id) : null;
-          //     if (userfcmtoken) {
-          //       await UserNotifications.rideCancelled(
-          //         userfcmtoken,
-          //         tripId,
-          //         CancelReason.OTHER,
-          //         CancelBy.SYSTEM
-          //       );
-          //     }
-          //   }
-          // } catch (cancelErr: any) {
-          //   logger.error(`Error auto-cancelling trip ${tripId}: ${cancelErr.message}`);
-          // }
+          tripBroadcastTimers.delete(String(tripId));
           return;
         }
 
@@ -551,20 +611,22 @@ export const TripService = {
         if (!result.rows.length || ![TripStatus.REQUESTED].includes(status)) {
           logger.info(`🛑 Stopping broadcast for ${tripId}. Current Status: ${status}`);
           clearInterval(timer);
-          tripBroadcastTimers.delete(tripId);
+          tripBroadcastTimers.delete(String(tripId));
           return;
         }
 
-        // Re-broadcast
-        logger.info(`🔄 Trip ${tripId} still pending. Re-sending... Retry ${retries}`);
-        broadcast();
+        shouldContinue = broadcast();
+        if (!shouldContinue) {
+          clearInterval(timer);
+          tripBroadcastTimers.delete(String(tripId));
+        }
       } catch (error) {
         logger.error('Postgres Error:', error);
       }
     }, RETRY_INTERVAL);
 
     // Store timer
-    tripBroadcastTimers.set(tripId, timer);
+    tripBroadcastTimers.set(String(tripId), timer);
 
     return { success: true };
   },
@@ -907,11 +969,24 @@ export const TripService = {
       timestamp: new Date().toISOString(),
     });
 
-    // 🛡️ PRODUCTION: Also emit TRIP_REMOVED so the driver screen clears immediately
+    // 🛡️ PRODUCTION: Stop broadcasts + notify all instances via Redis Pub/Sub
+    const cancelId = String(tripId);
+    cancelledTripIds.add(cancelId);
     try {
-      if (trip?.driver_id) {
-        emitToRoom(`driver_${trip.driver_id}`, 'TRIP_REMOVED', { tripId: tripId });
+      // Publish to Redis so ALL server instances stop their broadcast timers
+      const pub = getPubClient();
+      await pub.publish(STOP_BROADCAST_CHANNEL, cancelId);
+    } catch (redisErr) {
+      logger.error('Failed to publish STOP_BROADCAST to Redis:', redisErr);
+    }
+
+    // Also clear local timer (in case Redis message hasn't arrived yet)
+    try {
+      if (tripBroadcastTimers.has(cancelId)) {
+        clearInterval(tripBroadcastTimers.get(cancelId)!);
+        tripBroadcastTimers.delete(cancelId);
       }
+      emitTripRemoved(tripId);
     } catch (e) {
       logger.error('Failed to emit TRIP_REMOVED on cancellation:', e);
     }
@@ -1219,6 +1294,18 @@ export const TripService = {
       logger.error(`Failed to notify user about driver arrival: ${err.message}`);
     }
 
+    // Notify Driver
+    try {
+      if (trip.driver_id) {
+        const driverFcmToken = await DriverRepository.getFcmTokenById(trip.driver_id);
+        if (driverFcmToken) {
+          await DriverNotifications.arrivedAtPickup(driverFcmToken, tripId);
+        }
+      }
+    } catch (err: any) {
+      logger.error(`Failed to notify driver about arrival at pickup: ${err.message}`);
+    }
+
     const updatedTrip = await TripRepository.findById(tripId);
 
     // broadcastTripUpdate(tripId, { status: TripStatus.ARRIVED, type: 'trip_updated', trip: updatedTrip });
@@ -1241,7 +1328,7 @@ export const TripService = {
     const trip = await TripRepository.findById(tripId);
     if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-    const isRoundOrOutstation = trip.ride_type === 'ROUND_TRIP' || trip.ride_type === 'OUTSTATION_ROUND_TRIP' || trip.ride_type === 'OUTSTATION_ONE_WAY';
+    const isRoundOrOutstation = trip.ride_type === RideType.ROUND_TRIP || trip.ride_type === RideType.OUTSTATION_ROUND_TRIP || trip.ride_type === RideType.OUTSTATION_ONE_WAY;
     const newStatus = isRoundOrOutstation ? TripStatus.WAITING : TripStatus.DESTINATION_REACHED;
 
     const updateData: Partial<Trip> = {
@@ -1265,6 +1352,18 @@ export const TripService = {
       logger.error(`Failed to notify user about driver arrival: ${err.message}`);
     }
 
+    // Notify Driver
+    try {
+      if (trip.driver_id) {
+        const driverFcmToken = await DriverRepository.getFcmTokenById(trip.driver_id);
+        if (driverFcmToken) {
+          await DriverNotifications.destinationReached(driverFcmToken, tripId);
+        }
+      }
+    } catch (err: any) {
+      logger.error(`Failed to notify driver about destination reached: ${err.message}`);
+    }
+
     const updatedTrip = await TripRepository.findById(tripId);
 
     try {
@@ -1286,7 +1385,7 @@ export const TripService = {
     const trip = await TripRepository.findById(tripId);
     if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-    if (trip.ride_type !== 'OUTSTATION_ONE_WAY' && trip.ride_type !== 'OUTSTATION_ROUND_TRIP') {
+    if (trip.ride_type !== RideType.OUTSTATION_ONE_WAY && trip.ride_type !== RideType.OUTSTATION_ROUND_TRIP) {
       throw { statusCode: 400, message: 'Day halt is only available for outstation trips.' };
     }
     if (trip.trip_status === TripStatus.DAY_HALT) {
@@ -1317,7 +1416,7 @@ export const TripService = {
     const trip = await TripRepository.findById(tripId);
     if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
-    if (trip.ride_type !== 'OUTSTATION_ONE_WAY' && trip.ride_type !== 'OUTSTATION_ROUND_TRIP') {
+    if (trip.ride_type !== RideType.OUTSTATION_ONE_WAY && trip.ride_type !== RideType.OUTSTATION_ROUND_TRIP) {
       throw { statusCode: 400, message: 'Resume is only available for outstation trips.' };
     }
     if (trip.trip_status === TripStatus.WAITING) {
@@ -1535,16 +1634,20 @@ export const TripService = {
     if (!trip) throw { statusCode: 404, message: 'Trip not found' };
 
     const { DriverService } = require('../drivers/driver.service');
-    const drivers = await DriverService.getAvailableDrivers(
+    // Using findNearbyDrivers directly to ensure full driver data including FCM tokens is retrieved
+    const result = await DriverService.findNearbyDrivers(
+      io,
       Number(trip.pickup_lng),
       Number(trip.pickup_lat),
-      Number(radius) || 500,
-      trip.ride_type
+      trip,
+      Number(radius) || 500
     );
 
-    if (!drivers || drivers.length === 0) {
+    if (!result || !result.drivers || result.drivers.length === 0) {
       return { notifiedCount: 0, drivers: [] };
     }
+
+    const drivers = result.drivers;
 
     // requestRideToMultipleDrivers expects tripData as an array of trip objects
     await this.requestRideToMultipleDrivers(io, [trip], drivers);

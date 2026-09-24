@@ -145,7 +145,7 @@ export interface Driver {
   language?: string;
   is_vibration_enabled?: boolean;
   fcm_token?: string;
-  vdrive_id?: string;
+  t2d_id?: string;
   active_subscription?: {
     platform_subscription_id?: number;
     plan_name: string;

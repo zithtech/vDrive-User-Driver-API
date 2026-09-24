@@ -133,7 +133,7 @@ export class SosRepository {
           ELSE (SELECT phone_number FROM users WHERE id = se.user_id)
         END AS user_phone,
         CASE 
-          WHEN se.user_type = 'driver' THEN (SELECT vdrive_id FROM drivers WHERE id = se.user_id)
+          WHEN se.user_type = 'driver' THEN (SELECT t2d_id FROM drivers WHERE id = se.user_id)
           ELSE (SELECT user_code FROM users WHERE id = se.user_id)
         END AS user_code,
         CASE 

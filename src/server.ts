@@ -6,6 +6,7 @@ import { connectDatabase } from './shared/database';
 import { connectRedis, disconnectRedis } from './shared/redis';
 import { initSocket } from './sockets/socket';
 import { initCronJobs } from './shared/cron';
+import { initBroadcastCancellationListener } from './modules/trip/trip.service';
 
 const PORT = config.port || 3000;
 
@@ -26,6 +27,7 @@ async function startServer() {
     });
 
     initSocket(server);
+    await initBroadcastCancellationListener();
 
     const shutdown = (signal: string) => {
       logger.info(`${signal} received, shutting down gracefully`);
