@@ -91,7 +91,11 @@ export const TripController = {
           Number(trip.pickup_lng),
           Number(trip.pickup_lat),
           trip
-        ).catch(async (err: any) => {
+        ).then(async (result: any) => {
+          if (result && result.drivers && result.drivers.length > 0) {
+            await TripService.requestRideToMultipleDrivers(io, [trip], result.drivers);
+          }
+        }).catch(async (err: any) => {
           logger.error(`Automatic broadcast failed for trip ${trip.trip_id}: ${err.message}`);
           // try {
           //   await TripService.cancelTrip(
@@ -108,11 +112,11 @@ export const TripController = {
           //       userfcmtoken,
           //       trip.trip_id as string,
           //       CancelReason.OTHER,
-          //       CancelBy.SYSTEM
+          //       'No drivers available in your area.'
           //     );
           //   }
           // } catch (cancelErr: any) {
-          //   logger.error(`Failed to cancel trip ${trip.trip_id} after broadcast failure: ${cancelErr.message}`);
+          //   logger.error(`Error auto-cancelling trip ${trip.trip_id}: ${cancelErr.message}`);
           // }
         });
       }

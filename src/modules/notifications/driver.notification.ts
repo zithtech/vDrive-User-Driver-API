@@ -263,4 +263,22 @@ export const DriverNotifications = {
       body: `Too many failed attempts. Account locked for ${blockDuration} minutes.`,
       androidChannelId: 'ride_requests',
     }),
+
+  arrivedAtPickup: (fcmToken: string, bookingId: string) =>
+    sendToDevice(fcmToken, {
+      type: DriverNotificationType.DRIVER_ARRIVED,
+      title: 'Arrived at Pickup',
+      body: 'You have arrived at the pickup location.',
+      data: { bookingId, trip_id: bookingId },
+      androidChannelId: 'ride_requests',
+    }),
+
+  destinationReached: (fcmToken: string, bookingId: string) =>
+    sendToDevice(fcmToken, {
+      type: DriverNotificationType.DESTINATION_REACHED,
+      title: 'Destination Reached',
+      body: 'You have reached the destination.',
+      data: { bookingId, trip_id: bookingId },
+      androidChannelId: 'ride_requests',
+    }),
 };

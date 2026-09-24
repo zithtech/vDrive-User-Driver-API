@@ -69,6 +69,9 @@ export enum DriverNotificationType {
   TRIP_VERIFICATION_REJECTED = 'TRIP_VERIFICATION_REJECTED',
   OTP_LIMIT_EXCEEDED = 'OTP_LIMIT_EXCEEDED',
   TOO_MANY_ATTEMPTS = 'TOO_MANY_ATTEMPTS',
+
+  DRIVER_ARRIVED = 'DRIVER_ARRIVED',
+  DESTINATION_REACHED = 'DESTINATION_REACHED',
 }
 
 // ─── Admin Notification Types ─────────────────────────────────────────────────
