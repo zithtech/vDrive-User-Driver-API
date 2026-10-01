@@ -1448,6 +1448,7 @@ export const TripService = {
 
     await this.updateTrip(tripId, {
       trip_status: TripStatus.WAITING,
+      wait_started_at: new Date(),
     });
 
     const updatedTrip = await TripRepository.findById(tripId);
@@ -1472,6 +1473,7 @@ export const TripService = {
 
     await this.updateTrip(tripId, {
       trip_status: TripStatus.RETURN_STARTED,
+      return_started_at: new Date(),
     });
 
     const updatedTrip = await TripRepository.findById(tripId);

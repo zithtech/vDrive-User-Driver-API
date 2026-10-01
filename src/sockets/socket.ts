@@ -2,6 +2,8 @@ import { Server, Socket } from 'socket.io';
 import { Server as HttpServer } from 'http';
 import { logger } from '../shared/logger';
 import { TripService } from '../modules/trip/trip.service';
+import { DriverService } from '../modules/drivers/driver.service';
+import { notificationService } from '../services/notificationService';
 import { TripSocketEvent, TripEventPayload } from './socket.types';
 import { initAdminEventSubscriber, notifyAdmin } from '../shared/eventBus';
 import registerChatSocket from './chat.socket';
@@ -106,7 +108,7 @@ export const getIO = (): Server => {
 // Handlers
 // -----------------------------------------------------------------------------
 
-const handleRoomJoins = (socket: Socket): void => {
+const handleRoomJoins = (socket: any): void => {
   // Generic room join
   socket.on('join', (data: any) => {
     const roomName = typeof data === 'object' && data?.room ? data.room : data;
@@ -171,7 +173,7 @@ const handleRoomJoins = (socket: Socket): void => {
   });
 };
 
-const handleDriverLocation = (socket: Socket): void => {
+const handleDriverLocation = (socket: any): void => {
   // 1. Generic driver location update (for online tracking)
   socket.on(
     'driver_location_update',
@@ -268,7 +270,7 @@ const handleDriverLocation = (socket: Socket): void => {
   );
 };
 
-const handleTripActions = (socket: Socket): void => {
+const handleTripActions = (socket: any): void => {
   // ─── Accept Trip ──────────────────────────────────────────────
   socket.on(
     'ACCEPT_TRIP',
@@ -348,9 +350,55 @@ const handleTripActions = (socket: Socket): void => {
   );
 };
 
-const handleDisconnect = (socket: Socket): void => {
+const handleDisconnect = (socket: any): void => {
   socket.on('disconnect', () => {
     logger.info(`Socket disconnected: ${socket.id}`);
+    
+    // If the socket is authenticated as a driver
+    if (socket.driverId) {
+      const driverId = socket.driverId;
+      
+      // Wait 60 seconds to see if this was just a temporary network drop
+      setTimeout(async () => {
+        try {
+          const redis = getRedisClient();
+          
+          // 1. Check if driver has reconnected/sent heartbeat recently
+          const lastUpdatedStr = await redis.hget(`driver_info:${driverId}`, 'last_updated');
+          const lastUpdated = lastUpdatedStr ? parseInt(lastUpdatedStr) : 0;
+          const timeSinceLastUpdate = Date.now() - lastUpdated;
+
+          // If they sent a heartbeat within the last 60 seconds, they are fine
+          if (timeSinceLastUpdate < 60000) {
+            return; 
+          }
+
+          // 2. Check if the driver is currently on an active trip
+          const activeTrip = await TripService.getActiveTrip(driverId);
+          
+          if (activeTrip && ['LIVE', 'STARTED', 'ON_TRIP', 'ARRIVED'].includes(activeTrip.trip_status as string)) {
+            logger.warn(`Driver ${driverId} went offline during active trip ${activeTrip.trip_id || activeTrip.id}. Sending Wake-Up Push.`);
+
+            // 3. Get driver's FCM token from database
+            const driver = await DriverService.getDriverById(driverId);
+            if (driver && driver.fcm_token) {
+              
+              // 4. Send the High Priority Wake-Up Push
+              await notificationService.sendPushNotification(driver.fcm_token, {
+                title: "🚗 You have an active trip!",
+                body: "Tap here to return to your trip. Location tracking has stopped.",
+                data: {
+                  type: "ACTIVE_TRIP_WAKEUP",
+                  trip_id: String(activeTrip.trip_id || activeTrip.id)
+                }
+              });
+            }
+          }
+        } catch (error) {
+          logger.error(`Error in disconnect handler for driver ${driverId}:`, error);
+        }
+      }, 60000); // 60 seconds delay
+    }
   });
 };
 
