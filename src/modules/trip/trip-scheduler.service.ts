@@ -244,7 +244,7 @@ export const TripSchedulerService = {
          JOIN driver_subscriptions ds ON d.id = ds.driver_id
          JOIN recharge_plans rp ON ds.plan_id = rp.id
          WHERE d.status = 'active'
-           AND d.onboarding_status = 'SUBSCRIPTION_ACTIVE'
+           AND d.onboarding_status IN ('SUBSCRIPTION_ACTIVE', 'ACTIVE')
            AND ds.status = 'active'
            AND ds.expiry_date >= NOW()
            AND d.fcm_token IS NOT NULL`
@@ -308,20 +308,37 @@ export const TripSchedulerService = {
    */
   async broadcastNewScheduledRide(trip: any, io?: any) {
     try {
-      // Fetch UNIQUE fcm_tokens for all drivers with active status (ignoring subscription/eligibility checks)
+      // Fetch UNIQUE fcm_tokens for drivers with active status and subscription
       const eligibleDrivers = await query(
-        `SELECT DISTINCT fcm_token 
-         FROM drivers 
-         WHERE status = 'active'
-           AND fcm_token IS NOT NULL`
+        `SELECT DISTINCT d.fcm_token, d.id as driver_id, rp.plan_name
+         FROM drivers d
+         JOIN driver_subscriptions ds ON d.id = ds.driver_id
+         JOIN recharge_plans rp ON ds.plan_id = rp.id
+         WHERE d.status = 'active'
+           AND d.onboarding_status IN ('SUBSCRIPTION_ACTIVE', 'ACTIVE')
+           AND ds.status = 'active'
+           AND ds.expiry_date >= NOW()
+           AND d.fcm_token IS NOT NULL`
       );
 
       const startTimeStr =
         trip.scheduled_start_time instanceof Date
           ? trip.scheduled_start_time.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
           : String(trip.scheduled_start_time || '');
+          
+      const allowedDrivers = eligibleDrivers.rows.filter((driver) => {
+        const plan = driver.plan_name;
+        const rType = trip.ride_type;
+        
+        if (['ONE_WAY', 'ROUND_TRIP'].includes(rType)) {
+          return ['Basic', 'Elite', 'Premium'].includes(plan);
+        } else if (['OUTSTATION_ONE_WAY', 'OUTSTATION_ROUND_TRIP'].includes(rType)) {
+          return ['Elite', 'Premium'].includes(plan);
+        }
+        return true;
+      });
 
-      for (const driver of eligibleDrivers.rows) {
+      for (const driver of allowedDrivers) {
         await NotificationService.sendNotification(
           driver.fcm_token,
           'New Scheduled Ride Available',
@@ -346,8 +363,12 @@ export const TripSchedulerService = {
 
       // 📍 REAL-TIME: Broadcast via Sockets if io is provided
       if (io) {
-        logger.info(`📡 Broadcasting NEW_SCHEDULED_RIDE via Sockets for trip ${trip.trip_id}`);
-        io.emit('NEW_SCHEDULED_RIDE', { trip });
+        logger.info(`📡 Broadcasting NEW_SCHEDULED_RIDE via Sockets for trip ${trip.trip_id} to ${allowedDrivers.length} drivers`);
+        for (const driver of allowedDrivers) {
+          if (driver.driver_id) {
+            io.to(`driver_${driver.driver_id}`).emit('NEW_SCHEDULED_RIDE', { trip });
+          }
+        }
       }
     } catch (error: any) {
       logger.error(`Error in broadcastNewScheduledRide: ${error.message}`);

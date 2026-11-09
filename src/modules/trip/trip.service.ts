@@ -78,7 +78,7 @@ async function publishAdminTripUpdate(tripId: string, status: string, driverId?:
 export const TripService = {
   async getTrips(bookingType?: string, driverId?: string, onboardingStatus?: string) {
     // If it's a driver and they are requesting scheduled rides
-    if (bookingType === 'SCHEDULED' && onboardingStatus !== 'SUBSCRIPTION_ACTIVE') {
+    if (bookingType === 'SCHEDULED' && onboardingStatus !== 'SUBSCRIPTION_ACTIVE' && onboardingStatus !== 'ACTIVE') {
       // 🛡️ Return empty list if no active subscription
       return [];
     }

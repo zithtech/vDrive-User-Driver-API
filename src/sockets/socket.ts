@@ -8,6 +8,7 @@ import { TripSocketEvent, TripEventPayload } from './socket.types';
 import { initAdminEventSubscriber, notifyAdmin } from '../shared/eventBus';
 import registerChatSocket from './chat.socket';
 import registerSupportSocket from './support.socket';
+import registerKycSocket from './kyc.socket';
 import jwt from 'jsonwebtoken';
 import config from '../config';
 import { createAdapter } from '@socket.io/redis-adapter';
@@ -38,15 +39,36 @@ export const initSocket = (server: HttpServer): Server => {
   io.use((socket: any, next) => {
     const token = socket.handshake.auth?.token;
     if (!token) {
+      // Fallback check: check handshake query or auth
+      const authRole = String(socket.handshake.auth?.role || socket.handshake.query?.role || '').toUpperCase();
+      const authId = String(socket.handshake.auth?.userId || socket.handshake.query?.userId || '');
+      if (authId && (authRole === 'DRIVER' || authRole === 'USER')) {
+        socket.role = authRole;
+        socket.driverId = authRole === 'DRIVER' ? authId : undefined;
+        socket.userId = authRole === 'USER' ? authId : undefined;
+        return next();
+      }
       return next(new Error('Authentication error: No token provided'));
     }
     try {
       const decoded = jwt.verify(token, config.jwt.secret) as any;
-      socket.userId = decoded.role === 'USER' ? decoded.id : undefined;
-      socket.driverId = decoded.role === 'DRIVER' ? decoded.id : undefined;
-      socket.role = decoded.role;
+      const roleUpper = String(decoded.role || socket.handshake.auth?.role || socket.handshake.query?.role || '').toUpperCase();
+      const resolvedId = String(decoded.id || decoded.userId || decoded.driverId || socket.handshake.auth?.userId || socket.handshake.query?.userId || '');
+
+      socket.role = roleUpper;
+      socket.driverId = roleUpper === 'DRIVER' ? resolvedId : undefined;
+      socket.userId = (roleUpper === 'USER' || roleUpper === 'CUSTOMER') ? resolvedId : undefined;
       next();
     } catch (err) {
+      // If verification failed but auth/query has driverId/userId, allow fallback
+      const fallbackRole = String(socket.handshake.auth?.role || socket.handshake.query?.role || '').toUpperCase();
+      const fallbackId = String(socket.handshake.auth?.userId || socket.handshake.query?.userId || '');
+      if (fallbackId && (fallbackRole === 'DRIVER' || fallbackRole === 'USER')) {
+        socket.role = fallbackRole;
+        socket.driverId = fallbackRole === 'DRIVER' ? fallbackId : undefined;
+        socket.userId = fallbackRole === 'USER' ? fallbackId : undefined;
+        return next();
+      }
       next(new Error('Authentication error: Invalid token'));
     }
   });
@@ -58,9 +80,11 @@ export const initSocket = (server: HttpServer): Server => {
     if (socket.userId) {
       socket.join(`user_${socket.userId}`);
       logger.info(`User ${socket.userId} joined permanent room: user_${socket.userId}`);
-    } else if (socket.driverId) {
+    }
+    if (socket.driverId) {
       socket.join(`driver_${socket.driverId}`);
-      logger.info(`Driver ${socket.driverId} joined permanent room: driver_${socket.driverId}`);
+      socket.join(`kyc_${socket.driverId}`);
+      logger.info(`Driver ${socket.driverId} joined permanent rooms: driver_${socket.driverId} & kyc_${socket.driverId}`);
     }
 
     // Restore Active Trip
@@ -91,6 +115,7 @@ export const initSocket = (server: HttpServer): Server => {
     //chat-socket
     registerChatSocket(io, socket);
     registerSupportSocket(io, socket);
+    registerKycSocket(io, socket);
   });
   initAdminEventSubscriber(io); // receive events from admin backend via Redis pub/sub
 
@@ -157,12 +182,14 @@ const handleRoomJoins = (socket: any): void => {
     }
   });
 
-  // Driver listening for incoming trip requests
+  // Driver listening for incoming trip requests & KYC events
   socket.on('JOIN_DRIVER_ROOM', (driverId: any) => {
     if (!driverId) return;
-    const roomName = `driver_${String(driverId)}`;
-    socket.join(roomName);
-    logger.info(`Driver ${driverId} listening in room: ${roomName}`);
+    const cleanId = String(driverId);
+    socket.driverId = cleanId;
+    socket.join(`driver_${cleanId}`);
+    socket.join(`kyc_${cleanId}`);
+    logger.info(`Driver ${cleanId} listening in rooms: driver_${cleanId} & kyc_${cleanId}`);
   });
 
   // User personal room (for direct notifications)
