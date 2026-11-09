@@ -46,6 +46,10 @@ interface Config {
   referralDownloadUrl: string;
   defaultSearchRadius: number;
   avgSpeedMetersPerMin: number;
+  agora: {
+    appId: string;
+    appCertificate: string;
+  };
 }
 
 const config: Config = {
@@ -91,6 +95,10 @@ const config: Config = {
   referralDownloadUrl: process.env.REFERRAL_DOWNLOAD_URL || 'https://vdrive.app/download',
   defaultSearchRadius: Number(process.env.DEFAULT_SEARCH_RADIUS) || 500,
   avgSpeedMetersPerMin: Number(process.env.AVG_SPEED_METERS_PER_MIN) || 500,
+  agora: {
+    appId: process.env.AGORA_APP_ID || '41cadf2ab272451eb97b6b3915f3e016',
+    appCertificate: process.env.AGORA_APP_CERTIFICATE || '76cc2dd9773348e8800227b2bebdcba8',
+  },
 };
 
 export default config;

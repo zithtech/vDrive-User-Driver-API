@@ -25,6 +25,7 @@ import couponRoutes from '../modules/coupon-management/coupon.routes';
 import driverReferralRoutes from '../modules/driver-referrals/driver-referral.routes';
 import supportRoutes from '../modules/support/support.routes';
 import walletRoutes from '../modules/wallet/wallet.routes';
+import kycRoutes from '../modules/kyc/kyc.routes';
 import { logger } from '../shared/logger';
 
 const router = Router();
@@ -81,6 +82,7 @@ router.use('/sos', sosRoutes);
 router.use('/support', supportRoutes);
 router.use('/s3', s3Routes);
 router.use('/generate-presigned-url', s3Routes);
+router.use('/kyc/video', kycRoutes);
 
 router.use(isAuthenticated);
 router.use('/trips', tripRoutes);

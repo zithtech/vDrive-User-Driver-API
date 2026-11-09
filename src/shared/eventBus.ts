@@ -156,6 +156,63 @@ const dispatchToUser = async (io: Server, event: string, data: any): Promise<voi
       break;
     }
 
+    case 'KYC_CALL_ACCEPTED': {
+      const { driverId, sessionId } = data || {};
+      logger.info(`[bus] Forwarding KYC_CALL_ACCEPTED to driver_${driverId} & kyc_session_${sessionId}`);
+      if (driverId) {
+        io.to(`driver_${driverId}`).to(`kyc_${driverId}`).emit('KYC_CALL_ACCEPTED', data);
+      }
+      if (sessionId) {
+        io.to(`kyc_session_${sessionId}`).emit('KYC_CALL_ACCEPTED', data);
+      }
+      break;
+    }
+
+    case 'KYC_QUEUE_UPDATE': {
+      const { driverId, sessionId } = data || {};
+      if (driverId) {
+        io.to(`driver_${driverId}`).to(`kyc_${driverId}`).emit('KYC_QUEUE_UPDATE', data);
+      }
+      if (sessionId) {
+        io.to(`kyc_session_${sessionId}`).emit('KYC_QUEUE_UPDATE', data);
+      }
+      break;
+    }
+
+    case 'KYC_ADMIN_PROMPT': {
+      const { driverId, sessionId } = data || {};
+      if (driverId) {
+        io.to(`driver_${driverId}`).to(`kyc_${driverId}`).emit('KYC_ADMIN_PROMPT', data);
+      }
+      if (sessionId) {
+        io.to(`kyc_session_${sessionId}`).emit('KYC_ADMIN_PROMPT', data);
+      }
+      break;
+    }
+
+    case 'KYC_RESULT': {
+      const { driverId, sessionId } = data || {};
+      logger.info(`[bus] Forwarding KYC_RESULT to driver_${driverId}`);
+      if (driverId) {
+        io.to(`driver_${driverId}`).to(`kyc_${driverId}`).emit('KYC_RESULT', data);
+      }
+      if (sessionId) {
+        io.to(`kyc_session_${sessionId}`).emit('KYC_RESULT', data);
+      }
+      break;
+    }
+
+    case 'KYC_ADMIN_DISCONNECTED': {
+      const { driverId, sessionId } = data || {};
+      if (driverId) {
+        io.to(`driver_${driverId}`).to(`kyc_${driverId}`).emit('KYC_ADMIN_DISCONNECTED', data);
+      }
+      if (sessionId) {
+        io.to(`kyc_session_${sessionId}`).emit('KYC_ADMIN_DISCONNECTED', data);
+      }
+      break;
+    }
+
     default:
       logger.warn(`[bus] Unhandled event from admin backend: '${event}'`);
   }
