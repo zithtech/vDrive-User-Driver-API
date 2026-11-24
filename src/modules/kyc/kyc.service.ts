@@ -6,6 +6,8 @@ import { notifyAdmin } from '../../shared/eventBus';
 import { getIO } from '../../sockets/socket';
 import { KycRepository } from './kyc.repository';
 import { VideoKycSession, VideoKycStatus } from './kyc.model';
+import { NotificationService } from '../notifications/notification.service';
+import { EmailService } from '../email/email.service';
 
 export class KycService {
   /**
@@ -344,6 +346,13 @@ export class KycService {
       logger.warn('[KycService] Error emitting verdict:', e.message);
     }
 
+    // Trigger driver welcome email if Video KYC is approved
+    if (status === 'APPROVED') {
+      EmailService.sendDriverWelcomeEmailIfVerified(session.driver_id).catch((err: any) =>
+        logger.error(`Failed to trigger welcome email in submitVerdict: ${err.message}`)
+      );
+    }
+
     return {
       success: true,
       sessionId,
@@ -357,6 +366,252 @@ export class KycService {
    */
   public static async getQueue(): Promise<any[]> {
     return KycRepository.getQueue();
+  }
+
+  /**
+   * 9. Driver: Retry Video KYC after 2 minutes (Attempt 2)
+   */
+  public static async retryKyc(sessionId: string, driverId?: string): Promise<any> {
+    const session = await KycRepository.findBySessionId(sessionId);
+    const targetDriverId = driverId || session?.driver_id;
+    if (!session && !targetDriverId) throw new Error('Video KYC session not found');
+
+    if (session) {
+      await KycRepository.update(sessionId, { status: 'RETRYING' });
+    }
+
+    if (targetDriverId) {
+      await query(
+        `UPDATE drivers SET onboarding_status = 'VIDEO_KYC_RETRYING', updated_at = NOW() WHERE id = $1`,
+        [targetDriverId]
+      );
+
+      try {
+        await NotificationService.sendNotificationToDriver(
+          targetDriverId,
+          'Video KYC Retrying',
+          'Connecting to an available KYC officer (Attempt 2)...',
+          { type: 'KYC_RETRYING', sessionId }
+        );
+      } catch (err: any) {
+        logger.warn(`[KycService] FCM notify retry error: ${err.message}`);
+      }
+    }
+
+    notifyAdmin('KYC_RETRY_REQUEST', {
+      sessionId,
+      driverId: targetDriverId,
+      status: 'VIDEO_KYC_RETRYING',
+      attempt: 2,
+      timestamp: Date.now(),
+    });
+
+    try {
+      const io = getIO();
+      io.to(`kyc_session_${sessionId}`)
+        .to(`driver_${targetDriverId}`)
+        .to(`kyc_${targetDriverId}`)
+        .emit('KYC_STATUS_UPDATED', {
+          sessionId,
+          status: 'RETRYING',
+          attempt: 2,
+        });
+    } catch (e: any) {
+      logger.warn('[KycService] Error emitting retry status:', e.message);
+    }
+
+    logger.info(`🔄 [KycService] Driver ${targetDriverId} auto-retried Video KYC | Session: ${sessionId}`);
+    return { success: true, sessionId, status: 'RETRYING', attempt: 2 };
+  }
+
+  /**
+   * 10. Driver / Timeout: Transition to Scheduling after 4 minutes
+   */
+  public static async timeoutToSchedule(sessionId: string, driverId?: string): Promise<any> {
+    const session = await KycRepository.findBySessionId(sessionId);
+    const targetDriverId = driverId || session?.driver_id;
+    if (!session && !targetDriverId) throw new Error('Video KYC session not found');
+
+    if (session) {
+      await KycRepository.update(sessionId, { status: 'PENDING_SCHEDULING' });
+    }
+
+    if (targetDriverId) {
+      await query(
+        `UPDATE drivers SET onboarding_status = 'VIDEO_KYC_PENDING_SCHEDULING', updated_at = NOW() WHERE id = $1`,
+        [targetDriverId]
+      );
+    }
+
+    notifyAdmin('KYC_TIMEOUT_TO_SCHEDULE', {
+      sessionId,
+      driverId: targetDriverId,
+      status: 'VIDEO_KYC_PENDING_SCHEDULING',
+      timestamp: Date.now(),
+    });
+
+    try {
+      const io = getIO();
+      io.to(`kyc_session_${sessionId}`)
+        .to(`driver_${targetDriverId}`)
+        .to(`kyc_${targetDriverId}`)
+        .emit('KYC_STATUS_UPDATED', {
+          sessionId,
+          status: 'PENDING_SCHEDULING',
+        });
+    } catch (e: any) {
+      logger.warn('[KycService] Error emitting timeout to schedule status:', e.message);
+    }
+
+    logger.info(`⏳ [KycService] Driver ${targetDriverId} 4-min wait timeout -> Moved to Scheduling | Session: ${sessionId}`);
+    return { success: true, sessionId, status: 'PENDING_SCHEDULING' };
+  }
+
+  /**
+   * 11. Admin: Schedule Video KYC Appointment for Driver
+   */
+  public static async scheduleAppointment(payload: {
+    driverId: string;
+    sessionId?: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    slotLabel: string;
+    officerName?: string;
+    notes?: string;
+    notification?: { title: string; message: string };
+  }): Promise<any> {
+    const { driverId, sessionId, date, startTime, endTime, slotLabel, officerName, notes } = payload;
+
+    // Check double booking for this date & slot
+    const existing = await query(
+      `SELECT id FROM video_kyc_appointments WHERE appointment_date = $1 AND start_time = $2 AND end_time = $3 AND status = 'SCHEDULED' AND driver_id != $4`,
+      [date, startTime, endTime, driverId]
+    );
+    if (existing.rows.length > 0) {
+      throw new Error(`Time slot ${slotLabel} on ${date} is already booked by another driver.`);
+    }
+
+    // Persist appointment
+    const appointment = await KycRepository.createOrUpdateAppointment({
+      driverId,
+      sessionId,
+      date,
+      startTime,
+      endTime,
+      slotLabel,
+      officerName: officerName || 'Verification Officer - Desk 1',
+      notes,
+    });
+
+    // Update driver onboarding_status
+    await query(
+      `UPDATE drivers SET onboarding_status = 'VIDEO_KYC_SCHEDULED', updated_at = NOW() WHERE id = $1`,
+      [driverId]
+    );
+
+    if (sessionId) {
+      await KycRepository.update(sessionId, { status: 'SCHEDULED' });
+    }
+
+    // Real-time notification to driver socket
+    const appointmentEvent = {
+      appointmentId: appointment.id,
+      driverId,
+      date,
+      startTime,
+      endTime,
+      slot: {
+        id: `slot_${startTime.replace(':', '')}_${endTime.replace(':', '')}`,
+        label: slotLabel,
+        startTime,
+        endTime,
+      },
+      officerName: officerName || 'Verification Officer - Desk 1',
+      notification: {
+        title: 'Video KYC Scheduled',
+        message: `Your Video KYC appointment has been scheduled for ${slotLabel} on ${date}. Please be available at the scheduled time to complete your verification.`,
+      },
+      timestamp: Date.now(),
+    };
+
+    try {
+      const io = getIO();
+      io.to(`driver_${driverId}`)
+        .to(`kyc_${driverId}`)
+        .emit('KYC_APPOINTMENT_SCHEDULED', appointmentEvent);
+      logger.info(`📅 [KycService] KYC_APPOINTMENT_SCHEDULED emitted to driver_${driverId}`);
+    } catch (e: any) {
+      logger.warn('[KycService] Error emitting appointment scheduled event:', e.message);
+    }
+
+    // Push notification to driver device via FCM
+    try {
+      await NotificationService.sendNotificationToDriver(
+        driverId,
+        payload.notification?.title || 'Video KYC Scheduled',
+        payload.notification?.message ||
+          `Your Video KYC appointment has been scheduled for ${slotLabel} on ${date}. Please be available at the scheduled time to complete your verification.`,
+        {
+          type: 'KYC_APPOINTMENT_SCHEDULED',
+          appointmentId: appointment.id,
+          date,
+          startTime,
+          endTime,
+          slotLabel,
+        }
+      );
+      logger.info(`📲 [KycService] Push notification sent to driver ${driverId}`);
+    } catch (err: any) {
+      logger.warn(`[KycService] FCM push notification error: ${err.message}`);
+    }
+
+    return {
+      success: true,
+      appointment,
+      appointmentEvent,
+    };
+  }
+
+  /**
+   * 12. Driver: Get scheduled Video KYC appointment
+   */
+  public static async getAppointment(driverId: string): Promise<any> {
+    const appointment = await KycRepository.getAppointmentByDriverId(driverId);
+    return appointment;
+  }
+
+  /**
+   * 13. Admin: Get Video KYC Call History
+   */
+  public static async getHistory(): Promise<any[]> {
+    return KycRepository.getCallHistory();
+  }
+
+  /**
+   * 14. Admin: Get available time slots (with booking status for given date)
+   */
+  public static async getSlots(date?: string): Promise<any[]> {
+    return KycRepository.getAvailabilitySlots(date);
+  }
+
+  /**
+   * 15. Admin: Add custom availability time slot
+   */
+  public static async addSlot(slot: {
+    id: string;
+    startTime: string;
+    endTime: string;
+    label: string;
+  }): Promise<any> {
+    return KycRepository.addAvailabilitySlot(slot);
+  }
+
+  /**
+   * 16. Admin: Delete availability time slot
+   */
+  public static async deleteSlot(slotId: string): Promise<boolean> {
+    return KycRepository.deleteAvailabilitySlot(slotId);
   }
 }
 

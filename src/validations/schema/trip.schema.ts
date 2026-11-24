@@ -11,6 +11,7 @@ import {
   ChangeBy,
   VehicleType,
   TransmissionType,
+  FuelType,
 } from '../../enums/trip.enums';
 import { enumString } from '../../utilities/helper';
 
@@ -322,3 +323,20 @@ export const packageHoursRule = Joi.number().allow('', null).optional().messages
 export const outstationTripTypeRule = Joi.string().allow('', null).optional().messages({
   'string.base': 'outstation_trip_type must be a string',
 });
+
+export const fuelTypeRule = Joi.string().allow('', null).optional().messages({
+  'string.base': 'fuel_type must be a string',
+});
+
+export const vehicleNumberRule = Joi.string().allow('', null).optional().messages({
+  'string.base': 'vehicle_number must be a string',
+});
+
+export const vehicleBrandRule = Joi.string().allow('', null).optional().messages({
+  'string.base': 'vehicle_brand must be a string',
+});
+
+export const vehicleNameRule = Joi.string().allow('', null).optional().messages({
+  'string.base': 'vehicle_name must be a string',
+});
+

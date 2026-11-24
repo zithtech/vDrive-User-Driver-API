@@ -41,8 +41,8 @@ export const DriverRepository = {
       const driverResult = await client.query(
         `INSERT INTO drivers (
           first_name, last_name, phone_number, alternate_contact, trusted_contact, email, profile_pic_url, date_of_birth, gender, 
-          address, role, status, kyc, onboarding_status, documents_submitted, performance, payments, is_trip_verified, language, device_id, is_vibration_enabled, total_earnings, referral_code, referred_by, subscription_eligibility
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+          address, role, status, kyc, onboarding_status, documents_submitted, performance, payments, is_trip_verified, language, device_id, is_vibration_enabled, total_earnings, referral_code, referred_by, subscription_eligibility, signup_source
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, 'app')
         RETURNING *`,
         [
           driverData.first_name,

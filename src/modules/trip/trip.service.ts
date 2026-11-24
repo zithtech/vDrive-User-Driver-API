@@ -26,6 +26,7 @@ import { ReferralRepository } from '../referrals/referral.repository';
 import { DriverReferralService } from '../driver-referrals/driver-referral.service';
 import { CouponService } from '../coupon-management/coupon.service';
 import { UserStatus } from '../../enums/user.enums';
+import { SUPPORTED_OUTSTATION_LOCATIONS, OutstationLocation } from './outstationLocations';
 // Keep global map
 const tripBroadcastTimers = new Map<string, NodeJS.Timeout>();
 // 🛡️ Track cancelled trip IDs to block stale re-broadcasts
@@ -309,7 +310,14 @@ export const TripService = {
             distanceToUser: String(tripData.distanceToUser || '0'),
             eta: String(tripData.eta || '1'),
             remaining: '20',
-            tripId: String(tripData.id)
+            tripId: String(tripData.id),
+            vehicle_model: String(tripData.vehicle_model || ''),
+            vehicle_type: String(tripData.vehicle_type || ''),
+            transmission_type: String(tripData.transmission_type || ''),
+            fuel_type: String(tripData.fuel_type || ''),
+            vehicle_number: String(tripData.vehicle_number || ''),
+            vehicle_brand: String(tripData.vehicle_brand || ''),
+            vehicle_name: String(tripData.vehicle_name || ''),
           }
         );
       }
@@ -566,7 +574,14 @@ export const TripService = {
               distanceToUser: String(driver.distance_meters || '0'),
               eta: String(driver.eta || '1'),
               remaining: '15',
-              tripId: String(tripId)
+              tripId: String(tripId),
+              vehicle_model: String(tripData[0].vehicle_model || ''),
+              vehicle_type: String(tripData[0].vehicle_type || ''),
+              transmission_type: String(tripData[0].transmission_type || ''),
+              fuel_type: String(tripData[0].fuel_type || ''),
+              vehicle_number: String(tripData[0].vehicle_number || ''),
+              vehicle_brand: String(tripData[0].vehicle_brand || ''),
+              vehicle_name: String(tripData[0].vehicle_name || '')
             }
           ).catch((err) =>
             logger.error(`FCM Broadcast Error for driver ${driver.id}: ${err.message}`)
@@ -1655,5 +1670,145 @@ export const TripService = {
     await this.requestRideToMultipleDrivers(io, [trip], drivers);
 
     return { notifiedCount: drivers.length, drivers };
+  },
+
+  async getOutstationLocations(): Promise<OutstationLocation[]> {
+    try {
+      // In production, can also query database table `outstation_locations` if configured
+      // Fallback/Default to master list
+      return SUPPORTED_OUTSTATION_LOCATIONS.filter(loc => loc.isActive);
+    } catch (error: any) {
+      logger.error(`getOutstationLocations error: ${error.message}`);
+      return SUPPORTED_OUTSTATION_LOCATIONS;
+    }
+  },
+
+  async getBillingSummary(userId: string, month?: string, date?: string) {
+    try {
+      const tripsResult = await TripRepository.findByUserId(userId, 'customer', 300);
+      const allTrips: any[] = tripsResult?.data || [];
+
+      // Filter trips if month or date requested
+      let filteredTrips = allTrips;
+      if (date) {
+        filteredTrips = filteredTrips.filter((t: any) => {
+          const tripDate = new Date(t.created_at || t.scheduled_start_time || Date.now()).toISOString().split('T')[0];
+          return tripDate === date;
+        });
+      } else if (month) {
+        filteredTrips = filteredTrips.filter((t: any) => {
+          const tripDate = new Date(t.created_at || t.scheduled_start_time || Date.now()).toISOString().split('T')[0];
+          return tripDate.startsWith(month);
+        });
+      }
+
+      let totalCharges = 0;
+      let totalPaid = 0;
+      let totalPending = 0;
+      let totalFailed = 0;
+      let totalRefunded = 0;
+
+      const dailyMap: Record<string, any> = {};
+      const transactions: any[] = [];
+
+      filteredTrips.forEach((t: any) => {
+        const fare = Number(t.total_fare) || 0;
+        const paidAmount = Number(t.paid_amount) || (t.payment_status === 'PAID' ? fare : 0);
+        const status = t.payment_status || 'PENDING';
+        const dObj = new Date(t.created_at || t.scheduled_start_time || Date.now());
+        const dStr = dObj.toISOString().split('T')[0];
+        const timeStr = dObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+        totalCharges += fare;
+        if (status === 'PAID') {
+          totalPaid += fare;
+        } else if (status === 'PENDING') {
+          totalPending += fare;
+        } else if (status === 'FAILED') {
+          totalFailed += fare;
+        } else if (status === 'REFUNDED') {
+          totalRefunded += fare;
+        }
+
+        // Daily grouping
+        if (!dailyMap[dStr]) {
+          dailyMap[dStr] = {
+            date: dStr,
+            formatted_date: dObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+            total_trips: 0,
+            total_amount: 0,
+            paid_amount: 0,
+            pending_amount: 0,
+            failed_amount: 0,
+            refunded_amount: 0,
+            trips: [],
+          };
+        }
+
+        dailyMap[dStr].total_trips += 1;
+        dailyMap[dStr].total_amount += fare;
+        if (status === 'PAID') dailyMap[dStr].paid_amount += fare;
+        else if (status === 'PENDING') dailyMap[dStr].pending_amount += fare;
+        else if (status === 'FAILED') dailyMap[dStr].failed_amount += fare;
+        else if (status === 'REFUNDED') dailyMap[dStr].refunded_amount += fare;
+
+        const tripItem = {
+          trip_id: t.trip_id,
+          trip_code: t.trip_code || `TRP-${(t.trip_id || '').slice(0, 6).toUpperCase()}`,
+          ride_type: t.ride_type,
+          pickup_address: t.pickup_address,
+          drop_address: t.drop_address,
+          base_fare: Number(t.base_fare) || 0,
+          platform_fee: Number(t.platform_fee) || 0,
+          waiting_charges: Number(t.waiting_charges) || 0,
+          driver_allowance: Number(t.driver_allowance) || 0,
+          discount: Number(t.discount) || 0,
+          total_fare: fare,
+          paid_amount: paidAmount,
+          payment_status: status,
+          payment_method: t.payment_method || (t.booking_type === 'SCHEDULED' ? 'ONLINE' : 'WALLET'),
+          transaction_id: t.payment_order_id || t.transaction_id || `TXN_${(t.trip_id || '').slice(0, 8).toUpperCase()}`,
+          date: dStr,
+          time: timeStr,
+          created_at: t.created_at,
+        };
+
+        dailyMap[dStr].trips.push(tripItem);
+
+        // Transaction report item
+        transactions.push({
+          transaction_id: tripItem.transaction_id,
+          booking_id: t.trip_id,
+          trip_code: tripItem.trip_code,
+          date: dStr,
+          time: timeStr,
+          created_at: t.created_at,
+          payment_method: tripItem.payment_method,
+          amount: fare,
+          payment_status: status,
+          ride_type: t.ride_type,
+          pickup_address: t.pickup_address,
+          drop_address: t.drop_address,
+        });
+      });
+
+      const dailySummaries = Object.values(dailyMap).sort((a: any, b: any) => b.date.localeCompare(a.date));
+      transactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      return {
+        month: month || new Date().toISOString().slice(0, 7),
+        total_bookings: filteredTrips.length,
+        total_charges: totalCharges,
+        total_paid: totalPaid,
+        total_pending: totalPending,
+        total_failed: totalFailed,
+        total_refunded: totalRefunded,
+        daily_summaries: dailySummaries,
+        transactions: transactions,
+      };
+    } catch (error: any) {
+      logger.error(`getBillingSummary error: ${error.message}`);
+      throw error;
+    }
   },
 };

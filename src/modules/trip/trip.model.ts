@@ -8,6 +8,7 @@ import {
   TripStatus,
   VehicleType,
   TransmissionType,
+  FuelType,
 } from '../../enums/trip.enums';
 
 //user-driver
@@ -17,8 +18,13 @@ export interface Trip {
   driver_id?: string;
   vehicle_id?: string;
   vehicle_model?: string;
+  vehicle_brand?: string;
+  vehicle_name?: string;
   vehicle_type?: VehicleType;
   transmission_type?: TransmissionType;
+  fuel_type?: FuelType | string;
+  vehicle_number?: string;
+  vehicle_plate?: string;
   ride_type: RideType;
   service_type: ServiceType;
   booking_type: BookingType;

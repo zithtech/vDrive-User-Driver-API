@@ -243,8 +243,8 @@ export const TripRepository = {
   async createTrip(data: Partial<Trip>): Promise<Trip | null> {
     const result = await query(
       `
-      INSERT INTO trips (user_id, ride_type, service_type,driver_allowance, trip_status, booking_type,is_for_self,passenger_details, original_scheduled_start_time, scheduled_start_time, pickup_lat, pickup_lng, pickup_address, drop_lat, drop_lng, drop_address, distance_km,trip_duration_minutes, base_fare,additional_charges, platform_fee, total_fare, paid_amount, payment_status, vehicle_model, vehicle_type, transmission_type, discount, applied_coupon_id, coupon_code, otp, package_hours, outstation_trip_type, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,NOW(),NOW())
+      INSERT INTO trips (user_id, ride_type, service_type,driver_allowance, trip_status, booking_type,is_for_self,passenger_details, original_scheduled_start_time, scheduled_start_time, pickup_lat, pickup_lng, pickup_address, drop_lat, drop_lng, drop_address, distance_km,trip_duration_minutes, base_fare, platform_fee, additional_charges, total_fare, paid_amount, payment_status, vehicle_model, vehicle_type, transmission_type, discount, applied_coupon_id, coupon_code, otp, package_hours, outstation_trip_type, fuel_type, vehicle_number, vehicle_brand, vehicle_name, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,NOW(),NOW())
       RETURNING *;
     `,
       [
@@ -281,6 +281,10 @@ export const TripRepository = {
         data.otp || null,
         data.package_hours || null,
         data.outstation_trip_type || null,
+        data.fuel_type || null,
+        data.vehicle_number || null,
+        data.vehicle_brand || null,
+        data.vehicle_name || null,
       ]
     );
 

@@ -168,6 +168,10 @@ export const TripController = {
         vehicle_model: req.body.vehicle_model,
         vehicle_type: req.body.vehicle_type,
         transmission_type: req.body.transmission_type,
+        fuel_type: req.body.fuel_type,
+        vehicle_number: req.body.vehicle_number,
+        vehicle_brand: req.body.vehicle_brand,
+        vehicle_name: req.body.vehicle_name,
       };
 
       const updateData = cleanUndefined(updateTripData);
@@ -767,6 +771,28 @@ export const TripController = {
       return successResponse(res, 200, `Broadcasted to ${result.notifiedCount} drivers`, result);
     } catch (err: any) {
       logger.error(`triggerBroadcast error: ${err.message}`);
+      next(err);
+    }
+  },
+
+  async getOutstationLocations(req: Request, res: Response, next: NextFunction) {
+    try {
+      const locations = await TripService.getOutstationLocations();
+      return successResponse(res, 200, 'Outstation locations fetched successfully', locations);
+    } catch (err: any) {
+      logger.error(`getOutstationLocations error: ${err.message}`);
+      next(err);
+    }
+  },
+
+  async getBillingSummary(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { month, date } = req.query;
+      const summary = await TripService.getBillingSummary(id as string, month as string, date as string);
+      return successResponse(res, 200, 'Billing summary fetched successfully', summary);
+    } catch (err: any) {
+      logger.error(`getBillingSummary error: ${err.message}`);
       next(err);
     }
   },

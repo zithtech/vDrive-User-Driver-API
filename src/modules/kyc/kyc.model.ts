@@ -1,4 +1,13 @@
-export type VideoKycStatus = 'QUEUED' | 'IN_CALL' | 'COMPLETED' | 'CANCELLED' | 'REJECTED';
+export type VideoKycStatus =
+  | 'QUEUED'
+  | 'RETRYING'
+  | 'PENDING_SCHEDULING'
+  | 'SCHEDULED'
+  | 'IN_CALL'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'REJECTED'
+  | 'MISSED';
 
 export interface VideoKycSession {
   id?: string;
@@ -17,6 +26,21 @@ export interface VideoKycSession {
   location?: { latitude: number; longitude: number };
   started_at?: Date;
   ended_at?: Date;
+  created_at?: Date;
+  updated_at?: Date;
+}
+
+export interface VideoKycAppointment {
+  id?: string;
+  driver_id: string;
+  session_id?: string;
+  appointment_date: string;
+  start_time: string;
+  end_time: string;
+  slot_label: string;
+  officer_name?: string;
+  notes?: string;
+  status: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | 'MISSED';
   created_at?: Date;
   updated_at?: Date;
 }

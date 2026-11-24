@@ -6,6 +6,7 @@ import { DriverRepository } from './driver.repository';
 import { DriverNotifications } from '../notifications/driver.notification';
 import { DriverOnboardingStatus } from '../../enums/user.enums';
 import { validateDocument } from '../../services/ocr.service';
+import { EmailService } from '../email/email.service';
 
 export class DriverDocumentsService {
   static async getDriverDocuments(driverId: string): Promise<DriverDocument[]> {
@@ -220,6 +221,13 @@ export class DriverDocumentsService {
         }
       } catch (err: any) {
         logger.error(`Failed to send status update notification: ${err.message}`);
+      }
+
+      // Send Driver Welcome Email if all verifications are approved
+      if (onboardingStatusUpdate === DriverOnboardingStatus.DOCUMENTS_APPROVED) {
+        EmailService.sendDriverWelcomeEmailIfVerified(driverId).catch((err: any) =>
+          logger.error(`Failed to trigger welcome email in syncKYCStatus: ${err.message}`)
+        );
       }
     }
   }

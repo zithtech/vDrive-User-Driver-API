@@ -15,6 +15,7 @@ import { notificationService } from '../../services/notificationService';
 import { DriverOnboardingStatus } from '../../enums/user.enums';
 import { notifyAdmin } from '../../shared/eventBus';
 import { getRedisClient } from '../../shared/redis';
+import { EmailService } from '../email/email.service';
 
 export const DriverService = {
   async createDriver(driverData: CreateDriverInput): Promise<Driver> {
@@ -303,6 +304,11 @@ export const DriverService = {
           })
           .catch((err) => logger.error(`Failed to send approval notification: ${err.message}`));
       }
+
+      // 4. Send Welcome Email to Driver
+      EmailService.sendDriverWelcomeEmailIfVerified(driverId).catch((err) =>
+        logger.error(`Failed to trigger welcome email in verifyDriverDocuments: ${err.message}`)
+      );
 
       return true;
     } catch (error: any) {
