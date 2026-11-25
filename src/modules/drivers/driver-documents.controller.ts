@@ -22,13 +22,15 @@ export class DriverDocumentsController {
   static async saveDocument(req: Request, res: Response, next: NextFunction) {
     try {
       const driverId = req.params.driverId as string;
-      const { documentType, documentUrl } = req.body;
-      logger.info(`Saving document metadata for driver: ${driverId}, type: ${documentType}`);
+      const { documentType, documentUrl, documentNumber, licenseNumber, panNumber, aadhaarNumber, aadharNumber } = req.body;
+      const docNum = documentNumber || licenseNumber || panNumber || aadhaarNumber || aadharNumber;
+      logger.info(`Saving document metadata for driver: ${driverId}, type: ${documentType}, docNum: ${docNum || 'none'}`);
 
       const document = await DriverDocumentsService.uploadDocument(
         driverId,
         documentType,
-        documentUrl
+        documentUrl,
+        docNum
       );
 
       return successResponse(res, 201, 'Document saved successfully', document);

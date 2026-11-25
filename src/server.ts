@@ -40,6 +40,14 @@ async function startServer() {
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
+
+    process.on('unhandledRejection', (reason) => {
+      logger.warn('⚠️ [Process] Unhandled Rejection (prevented crash):', reason);
+    });
+
+    process.on('uncaughtException', (err) => {
+      logger.error('⚠️ [Process] Uncaught Exception (prevented crash):', err);
+    });
   } catch (error) {
     logger.error('❌ Failed to start server:', error);
     process.exit(1);

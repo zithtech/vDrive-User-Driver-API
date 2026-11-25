@@ -113,45 +113,92 @@ export const AuthRepository = {
     return result?.rows[0] || null;
   },
 
-  async signOutUser(userId: string, device_id: string, role: string): Promise<boolean> {
+  async signOutUser(userId: string, device_id?: string, role?: string): Promise<boolean> {
     try {
-      const table = role === 'driver' ? 'drivers' : 'users';
-      const sessionTable = this.getSessionTable(role);
+      const normalizedRole = role === 'driver' ? 'driver' : 'customer';
 
-      // ✅ Get FCM token before clearing session
-      const fcmToken = await AuthRepository.getFcmToken(userId, role, device_id);
+      let fcmToken: string | null = null;
+      if (device_id) {
+        // ✅ Get FCM token before clearing session
+        fcmToken = await AuthRepository.getFcmToken(userId, normalizedRole, device_id);
 
-      // ✅ Invalidate specific device session
-      await query(
-        `UPDATE ${sessionTable}
-       SET is_active     = FALSE,
-           refresh_token = NULL,
-           fcm_token     = NULL,
-           force_logout  = FALSE,
-           last_active   = NOW()
-       WHERE user_id = $1 AND device_id = $2`,
-        [userId, device_id]
-      );
+        // ✅ Invalidate specific device session across BOTH session tables
+        await query(
+          `UPDATE user_sessions
+         SET is_active     = FALSE,
+             refresh_token = NULL,
+             fcm_token     = NULL,
+             force_logout  = FALSE,
+             last_active   = NOW()
+         WHERE user_id = $1 AND device_id = $2`,
+          [userId, device_id]
+        );
+        await query(
+          `UPDATE driver_sessions
+         SET is_active     = FALSE,
+             refresh_token = NULL,
+             fcm_token     = NULL,
+             force_logout  = FALSE,
+             last_active   = NOW()
+         WHERE user_id = $1 AND device_id = $2`,
+          [userId, device_id]
+        );
+      } else {
+        // Invalidate all active sessions across both session tables for this user if no device_id specified
+        await query(
+          `UPDATE user_sessions
+         SET is_active     = FALSE,
+             refresh_token = NULL,
+             fcm_token     = NULL,
+             force_logout  = FALSE,
+             last_active   = NOW()
+         WHERE user_id = $1`,
+          [userId]
+        );
+        await query(
+          `UPDATE driver_sessions
+         SET is_active     = FALSE,
+             refresh_token = NULL,
+             fcm_token     = NULL,
+             force_logout  = FALSE,
+             last_active   = NOW()
+         WHERE user_id = $1`,
+          [userId]
+        );
+      }
 
-      // ✅ Clear device_id from users/drivers table
-      await query(`UPDATE ${table} SET device_id = NULL WHERE id = $1`, [userId]);
+      // ✅ Clear device_id from this user's record in BOTH users and drivers tables
+      await query(`UPDATE users SET device_id = NULL WHERE id = $1`, [userId]);
+      await query(`UPDATE drivers SET device_id = NULL WHERE id = $1`, [userId]);
 
-      // ✅ Clear stale OTP records to prevent rate-limit carry-over on re-auth
-      const phoneResult = await query(`SELECT phone_number FROM ${table} WHERE id = $1`, [userId]);
-      if (phoneResult.rows[0]?.phone_number) {
-        await AuthRepository.clearOtpRecord(phoneResult.rows[0].phone_number, role);
-        logger.info(`OTP record cleared for ${phoneResult.rows[0].phone_number} on sign-out`);
+      // If device_id provided, ensure no lingering records in either users or drivers keep this device_id
+      if (device_id) {
+        await query(`UPDATE users SET device_id = NULL WHERE device_id = $1`, [device_id]);
+        await query(`UPDATE drivers SET device_id = NULL WHERE device_id = $1`, [device_id]);
+      }
+
+      // ✅ Clear stale OTP records across both tables to prevent rate-limit carry-over on re-auth
+      const userPhoneResult = await query(`SELECT phone_number FROM users WHERE id = $1`, [userId]);
+      const driverPhoneResult = await query(`SELECT phone_number FROM drivers WHERE id = $1`, [userId]);
+      const phoneNumber =
+        userPhoneResult.rows[0]?.phone_number || driverPhoneResult.rows[0]?.phone_number;
+      if (phoneNumber) {
+        await AuthRepository.clearOtpRecord(phoneNumber, 'customer');
+        await AuthRepository.clearOtpRecord(phoneNumber, 'driver');
+        logger.info(`OTP record cleared for ${phoneNumber} on sign-out`);
       }
 
       // ✅ Unsubscribe from FCM topic
       if (fcmToken) {
-        await unsubscribeFromTopic(fcmToken, role);
+        await unsubscribeFromTopic(fcmToken, normalizedRole).catch((err: any) =>
+          logger.warn(`Failed to unsubscribe from topic on sign-out: ${err.message || err}`)
+        );
       }
 
-      logger.info(`User ${userId} signed out from device ${device_id}`);
+      logger.info(`User ${userId} signed out${device_id ? ` from device ${device_id}` : ''}`);
       return true;
-    } catch (err) {
-      logger.error(`SignOut failed for user ${userId}: ${err}`);
+    } catch (err: any) {
+      logger.error(`SignOut failed for user ${userId}: ${err.message || err}`);
       return false;
     }
   },
@@ -265,9 +312,9 @@ export const AuthRepository = {
 
   // Invalidate any other users who might be logged into this same device
   async invalidateOtherUsersOnDevice(device_id: string, exclude_user_id: string, role: string) {
-    const table = this.getSessionTable(role);
+    // Invalidate sessions across both user_sessions and driver_sessions for this device
     await query(
-      `UPDATE ${table}
+      `UPDATE user_sessions
        SET is_active = FALSE,
            refresh_token = NULL,
            force_logout = TRUE,
@@ -275,8 +322,22 @@ export const AuthRepository = {
        WHERE device_id = $1 AND user_id != $2`,
       [device_id, exclude_user_id]
     );
-    const userTable = role === 'driver' ? 'drivers' : 'users';
-    await query(`UPDATE ${userTable} SET device_id = NULL WHERE device_id = $1 AND id != $2`, [
+    await query(
+      `UPDATE driver_sessions
+       SET is_active = FALSE,
+           refresh_token = NULL,
+           force_logout = TRUE,
+           fcm_token = NULL
+       WHERE device_id = $1 AND user_id != $2`,
+      [device_id, exclude_user_id]
+    );
+
+    // Free device_id in both users and drivers tables so no collision occurs
+    await query(`UPDATE users SET device_id = NULL WHERE device_id = $1 AND id != $2`, [
+      device_id,
+      exclude_user_id,
+    ]);
+    await query(`UPDATE drivers SET device_id = NULL WHERE device_id = $1 AND id != $2`, [
       device_id,
       exclude_user_id,
     ]);

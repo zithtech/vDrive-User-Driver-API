@@ -41,21 +41,26 @@ export const UserRepository = {
 
   async createUser(data: User): Promise<User | null> {
     try {
+      const firstName = data.first_name?.trim() ?? '';
+      const lastName = data.last_name?.trim() ?? '';
+      const fullName =
+        data.full_name?.trim() || [firstName, lastName].filter(Boolean).join(' ');
+
       const result = await query(
         `INSERT INTO users (first_name, last_name, full_name, phone_number, alternate_contact, role, gender, date_of_birth, status, email, device_id, onboarding_status, otp, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()) RETURNING *;`,
         [
-          data.first_name,
-          data.last_name,
-          data.full_name,
-          data.phone_number,
-          data.alternate_contact,
-          data.role,
-          data.gender,
-          data.date_of_birth,
-          data.status,
-          data.email,
-          data.device_id,
-          data.onboarding_status,
+          firstName,
+          lastName,
+          fullName,
+          data.phone_number?.trim() ?? '',
+          data.alternate_contact?.trim() || null,
+          data.role || 'customer',
+          data.gender || null,
+          data.date_of_birth || null,
+          data.status || 'active',
+          data.email?.trim() ? data.email.trim().toLowerCase() : null,
+          data.device_id?.trim() || null,
+          data.onboarding_status || 'phone_verified',
           data.otp || generateOTP(),
         ]
       );

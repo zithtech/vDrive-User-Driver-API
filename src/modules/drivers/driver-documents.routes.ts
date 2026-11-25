@@ -12,7 +12,7 @@ router.post(
     [Segments.BODY]: Joi.object().keys({
       documentType: Joi.string().required(),
       contentType: Joi.string().required(),
-    }),
+    }).unknown(true),
   }),
   DriverDocumentsController.getUploadUrl
 );
@@ -23,7 +23,7 @@ router.post(
     [Segments.BODY]: Joi.object().keys({
       documentType: Joi.string().required(),
       documentUrl: Joi.object().required(),
-    }),
+    }).unknown(true),
   }),
   DriverDocumentsController.saveDocument
 );

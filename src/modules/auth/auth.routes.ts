@@ -41,13 +41,14 @@ router.post(
   AuthController.driverLogin
 );
 
+// Signout route placed before strict isAuthenticated check so expired tokens or clients can cleanly sign out
+router.post('/signout/:id', validateParams(UserValidation.idValidation), AuthController.signOut);
+
 router.use(isAuthenticated);
 
 router.get('/me', AuthController.getMe);
 
 router.get('/get-deleted-user', AuthController.getDeletedUser);
-
-router.post('/signout/:id', validateParams(UserValidation.idValidation), AuthController.signOut);
 
 router.get('/validate-session', authMiddleware, AuthController.validateSession);
 

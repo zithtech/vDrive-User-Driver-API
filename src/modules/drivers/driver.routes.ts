@@ -9,6 +9,7 @@ import {
   availableDriversForAssignmentValidator,
 } from './driver.validator';
 import { isAuthenticatedOrService } from '../../shared/serviceAuthentication';
+import { DrivingTestController } from '../driving-test/driving-test.controller';
 
 const router = Router();
 
@@ -22,6 +23,9 @@ router.use(isAuthenticatedOrService);
 router.get('/me', DriverController.getMe);
 router.delete('/me', DriverController.deleteMyAccount);
 router.post('/me/reset', DriverController.resetProfile);
+// Unified Onboarding & Driving Test Status
+router.get('/onboarding-status/:driverId', DrivingTestController.getUnifiedOnboardingStatus);
+
 router.get('/', getDriversValidator, DriverController.getDrivers);
 router.get('/:id', getDriverValidator, DriverController.getDriver);
 router.post('/:id/go-online', DriverController.goOnline);

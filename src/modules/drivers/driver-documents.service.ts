@@ -22,10 +22,22 @@ export class DriverDocumentsService {
   static async uploadDocument(
     driverId: string,
     documentType: DocumentType,
-    documentUrl: any
+    documentUrl: any,
+    docNum?: string
   ): Promise<DriverDocument> {
     logger.info(`Upserting document for driver: ${driverId}, type: ${documentType}`);
     const document = await DriverDocumentsRepository.upsert(driverId, documentType, documentUrl);
+
+    // If driver provided document number directly, save it to the document record
+    if (docNum) {
+      try {
+        await DriverDocumentsRepository.updateOCRData(document.id, {
+          ocr_extracted_number: docNum,
+        });
+      } catch (err: any) {
+        logger.warn(`[DriverDocumentsService] Failed to set document number: ${err?.message}`);
+      }
+    }
 
     // --- OCR VALIDATION ---
     // Run AI validation on identity documents (skip selfie, police verification)
@@ -43,7 +55,7 @@ export class DriverDocumentsService {
 
         // Save OCR data to the document record
         await DriverDocumentsRepository.updateOCRData(document.id, {
-          ocr_extracted_number: ocrResult.extractedNumber,
+          ocr_extracted_number: ocrResult.extractedNumber || docNum,
           ocr_extracted_name: ocrResult.extractedName,
           ocr_extracted_expiry: ocrResult.extractedExpiry,
           ocr_status: ocrResult.ocrStatus,
