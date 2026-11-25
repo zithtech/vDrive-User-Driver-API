@@ -249,6 +249,38 @@ export class DrivingTestRepository {
     checksum?: string;
   }): Promise<any> {
     await this.ensureTables();
+
+    const existing = await query(
+      `SELECT id FROM driving_test_recordings
+       WHERE session_id = $1 AND camera_type = $2 AND segment_index = $3
+       LIMIT 1`,
+      [data.sessionId, data.cameraType, data.segmentIndex]
+    );
+
+    if (existing.rows.length > 0) {
+      const updated = await query(
+        `UPDATE driving_test_recordings
+         SET duration_ms = $2,
+             s3_bucket = $3,
+             s3_key = $4,
+             file_size_bytes = $5,
+             checksum_sha256 = $6,
+             is_uploaded = TRUE,
+             is_purged = FALSE
+         WHERE id = $1
+         RETURNING *`,
+        [
+          existing.rows[0].id,
+          data.durationMs,
+          data.s3Bucket,
+          data.s3Key,
+          data.fileSizeBytes,
+          data.checksum || null,
+        ]
+      );
+      return updated.rows[0];
+    }
+
     const res = await query(
       `INSERT INTO driving_test_recordings (
         session_id, camera_type, segment_index, duration_ms, s3_bucket, s3_key, file_size_bytes, checksum_sha256, is_uploaded

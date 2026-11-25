@@ -150,7 +150,12 @@ export class DrivingTestController {
     try {
       const { sessionId, cameraType, segmentIndex, durationMs, s3Key, fileSizeBytes, checksum } = req.body;
 
-      const safeKey = s3Key || `driving-tests/${sessionId}/${(cameraType || 'REAR').toLowerCase()}_segment_${String(segmentIndex || 1).padStart(4, '0')}.mp4`;
+      if (!sessionId || !s3Key) {
+        return res.status(400).json({
+          success: false,
+          message: 'sessionId and s3Key are required after S3 upload completes',
+        });
+      }
 
       const recording = await DrivingTestRepository.saveRecordingSegment({
         sessionId,
@@ -158,12 +163,12 @@ export class DrivingTestController {
         segmentIndex: segmentIndex || 1,
         durationMs: durationMs || 60000,
         s3Bucket: process.env.S3_BUCKET_NAME || 't2drive-016829298433-ap-south-1-an',
-        s3Key: safeKey,
+        s3Key,
         fileSizeBytes: fileSizeBytes || 0,
         checksum,
       });
 
-      return res.status(201).json({ success: true, recordingId: recording.id, s3Key: safeKey });
+      return res.status(201).json({ success: true, recordingId: recording.id, s3Key });
     } catch (err: any) {
       logger.error('Error in registerRecordingSegment:', err);
       return res.status(500).json({ success: false, message: err.message });
