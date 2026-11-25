@@ -116,17 +116,17 @@ export const DriverDocumentsRepository = {
       ocr_extracted_number?: string;
       ocr_extracted_name?: string;
       ocr_extracted_expiry?: string;
-      ocr_status: 'COMPLETED' | 'FAILED' | 'SKIPPED';
+      ocr_status?: 'COMPLETED' | 'FAILED' | 'SKIPPED';
       ocr_raw_text?: string;
     }
   ): Promise<DriverDocument | null> {
     const sqlQuery = `
       UPDATE driver_documents
-      SET ocr_extracted_number = $2,
-          ocr_extracted_name = $3,
-          ocr_extracted_expiry = $4,
-          ocr_status = $5,
-          ocr_raw_text = $6
+      SET ocr_extracted_number = COALESCE($2, ocr_extracted_number),
+          ocr_extracted_name = COALESCE($3, ocr_extracted_name),
+          ocr_extracted_expiry = COALESCE($4, ocr_extracted_expiry),
+          ocr_status = COALESCE($5, ocr_status),
+          ocr_raw_text = COALESCE($6, ocr_raw_text)
       WHERE id = $1
       RETURNING id, driver_id, document_type, document_url, status, uploaded_at, verified_at, remarks, rejection_reason,
                 ocr_extracted_number, ocr_extracted_name, ocr_extracted_expiry, ocr_status
@@ -136,7 +136,7 @@ export const DriverDocumentsRepository = {
       ocrData.ocr_extracted_number || null,
       ocrData.ocr_extracted_name || null,
       ocrData.ocr_extracted_expiry || null,
-      ocrData.ocr_status,
+      ocrData.ocr_status || null,
       ocrData.ocr_raw_text ? ocrData.ocr_raw_text.substring(0, 2000) : null, // Limit raw text size
     ]);
     const doc = result.rows[0];

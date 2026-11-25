@@ -33,6 +33,7 @@ export class DriverDocumentsService {
       try {
         await DriverDocumentsRepository.updateOCRData(document.id, {
           ocr_extracted_number: docNum,
+          ocr_status: 'SKIPPED',
         });
       } catch (err: any) {
         logger.warn(`[DriverDocumentsService] Failed to set document number: ${err?.message}`);
