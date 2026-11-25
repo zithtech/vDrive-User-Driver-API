@@ -32,12 +32,12 @@ export class S3Service {
    * Generate a pre-signed URL for uploading a file (PUT)
    * @param key - The S3 key (path/filename)
    * @param contentType - The MIME type of the file
-   * @param expiresIn - Expiration time in seconds (default 60s)
+   * @param expiresIn - Expiration time in seconds (default 300s / 5 minutes)
    */
   async getUploadUrl(
     key: string,
     contentType: string,
-    expiresIn: number = 60
+    expiresIn: number = 300
   ): Promise<{ uploadUrl: string; fileUrl: string; key: string }> {
     try {
       const command = new PutObjectCommand({

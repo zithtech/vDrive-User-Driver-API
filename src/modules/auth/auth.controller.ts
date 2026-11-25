@@ -174,7 +174,7 @@ export const AuthController = {
         phone_number,
         alternate_contact,
         date_of_birth,
-        role,
+        role = UserRole.CUSTOMER,
         gender,
         email,
         status,
@@ -188,20 +188,32 @@ export const AuthController = {
         throw { statusCode: 409, message: 'User already exists' };
       }
 
+      // Sanitize inputs for database unique constraints
+      const finalDeviceId = device_id?.trim() || null;
+      const finalEmail = email?.trim() ? email.trim().toLowerCase() : null;
+      const finalFirstName = first_name?.trim() ?? '';
+      const finalLastName = last_name?.trim() ?? '';
+
+      // Free up device_id from any prior account on this device to avoid unique constraint violations
+      if (finalDeviceId) {
+        await query(`UPDATE users SET device_id = NULL WHERE device_id = $1`, [finalDeviceId]);
+        await query(`UPDATE drivers SET device_id = NULL WHERE device_id = $1`, [finalDeviceId]);
+      }
+
       const body: User = {
-        first_name: first_name ?? '',
-        last_name: last_name ?? '',
-        full_name: formFullName(first_name, last_name),
-        phone_number: phone_number ?? '',
-        alternate_contact: alternate_contact ?? null,
-        date_of_birth: date_of_birth ?? null,
+        first_name: finalFirstName,
+        last_name: finalLastName,
+        full_name: formFullName(finalFirstName, finalLastName),
+        phone_number: phone_number?.trim() ?? '',
+        alternate_contact: alternate_contact?.trim() || null,
+        date_of_birth: date_of_birth || null,
         role,
-        gender: gender ?? null,
-        email: email ?? null,
+        gender: gender || null,
+        email: finalEmail,
         status: status ?? UserStatus.ACTIVE,
-        device_id: device_id ?? '',
+        device_id: finalDeviceId,
         onboarding_status: OnboardingStatus.PROFILE_COMPLETED,
-        referral_code: referral_code ?? null,
+        referral_code: referral_code?.trim() || null,
         otp: otp,
       };
 
@@ -247,18 +259,30 @@ export const AuthController = {
         throw { statusCode: 409, message: 'Driver already exists' };
       }
 
+      // Sanitize inputs for database unique constraints
+      const finalDeviceId = device_id?.trim() || null;
+      const finalEmail = email?.trim() ? email.trim().toLowerCase() : null;
+      const finalFirstName = first_name?.trim() ?? '';
+      const finalLastName = last_name?.trim() ?? '';
+
+      // Free up device_id from any prior account on this device to avoid unique constraint violations
+      if (finalDeviceId) {
+        await query(`UPDATE users SET device_id = NULL WHERE device_id = $1`, [finalDeviceId]);
+        await query(`UPDATE drivers SET device_id = NULL WHERE device_id = $1`, [finalDeviceId]);
+      }
+
       const body: User = {
-        first_name: first_name ?? '',
-        last_name: last_name ?? '',
-        full_name: formFullName(first_name, last_name),
-        phone_number: phone_number ?? '',
-        alternate_contact: alternate_contact ?? null,
-        date_of_birth: date_of_birth ?? null,
+        first_name: finalFirstName,
+        last_name: finalLastName,
+        full_name: formFullName(finalFirstName, finalLastName),
+        phone_number: phone_number?.trim() ?? '',
+        alternate_contact: alternate_contact?.trim() || null,
+        date_of_birth: date_of_birth || null,
         role,
-        gender: gender ?? null,
-        email: email ?? null,
+        gender: gender || null,
+        email: finalEmail,
         status: UserStatus.ACTIVE,
-        device_id: device_id ?? '',
+        device_id: finalDeviceId,
       };
 
       const newDriver = await UserService.createUser(body);
@@ -306,11 +330,29 @@ export const AuthController = {
   async signOut(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const { device_id, role } = req.body;
-      await AuthService.signOutUser(id as string, device_id, role);
+      const device_id = req.body?.device_id || (req.headers['x-device-id'] as string) || '';
+      let role = req.body?.role || (req as any).user?.role;
+
+      // Check token if available (allowing expired token during logout)
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.replace('Bearer ', '');
+        try {
+          const decoded = jwt.verify(token, config.jwt.secret, {
+            ignoreExpiration: true,
+          }) as any;
+          if (decoded?.role && !role) {
+            role = decoded.role;
+          }
+        } catch {
+          // Token decoding failed, proceed with given role
+        }
+      }
+
+      await AuthService.signOutUser(id as string, device_id, role || 'customer');
       successResponse(res, 200, 'User sign out successfully');
     } catch (error: any) {
-      logger.warn(`User creation failed: ${error.message}`);
+      logger.warn(`Sign out failed: ${error.message}`);
       next(error);
     }
   },

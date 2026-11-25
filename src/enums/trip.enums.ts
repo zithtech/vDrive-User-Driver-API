@@ -120,3 +120,12 @@ export enum VehicleType {
   LUXURY = 'LUXURY',
   TEMPO_TRAVELLER = 'TEMPO_TRAVELLER',
 }
+
+export enum FuelType {
+  PETROL = 'PETROL',
+  DIESEL = 'DIESEL',
+  CNG = 'CNG',
+  ELECTRIC = 'ELECTRIC',
+  HYBRID = 'HYBRID',
+}
+

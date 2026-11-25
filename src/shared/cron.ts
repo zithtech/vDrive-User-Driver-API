@@ -270,5 +270,23 @@ export const initCronJobs = () => {
     }
   });
 
+  // Driving Test Video Retention Purge: Daily at 2:30 AM
+  cron.schedule('30 2 * * *', async () => {
+    const lockKey = 'daily_driving_test_video_purge';
+    const hasLock = await acquireLock(lockKey, 3600);
+    if (!hasLock) return;
+
+    logger.info('Running daily driving test video retention purge...');
+    try {
+      const { DrivingTestService } = require('../modules/driving-test/driving-test.service');
+      const result = await DrivingTestService.purgeExpiredRecordings();
+      logger.info(`Purged ${result.purgedCount} expired driving test recordings (${result.bytesFreed} bytes freed).`);
+    } catch (error) {
+      logger.error('Error in driving test video retention purge job:', error);
+    } finally {
+      await releaseLock(lockKey);
+    }
+  });
+
   logger.info('✅ Cron jobs initialized');
 };

@@ -34,12 +34,13 @@ async function createNewUser(
   device_id: string,
   referred_by?: string
 ) {
-  const finalDeviceId = device_id || null;
+  const finalDeviceId = device_id?.trim() || null;
 
   const baseInput: any = {
     first_name: '',
     last_name: '',
-    phone_number,
+    full_name: '',
+    phone_number: phone_number?.trim() ?? '',
     email: null,
     role,
     status: UserStatus.ACTIVE,
@@ -54,6 +55,7 @@ async function createNewUser(
   if (role === 'driver') {
     if (finalDeviceId) {
       await query(`UPDATE drivers SET device_id = NULL WHERE device_id = $1`, [finalDeviceId]);
+      await query(`UPDATE users SET device_id = NULL WHERE device_id = $1`, [finalDeviceId]);
     }
     const driverInput = {
       ...baseInput,
@@ -73,6 +75,7 @@ async function createNewUser(
   if (role === 'customer') {
     if (finalDeviceId) {
       await query(`UPDATE users SET device_id = NULL WHERE device_id = $1`, [finalDeviceId]);
+      await query(`UPDATE drivers SET device_id = NULL WHERE device_id = $1`, [finalDeviceId]);
     }
     const newUser = await UserRepository.createUser(baseInput); // only common fields
     return {
@@ -153,24 +156,22 @@ export const AuthService = {
       }
 
       // 2. Duplicate request protection: if an unexpired, unused OTP exists
-      //    and was created within the last 30 seconds, return the same TTL
-      //    without generating a new OTP (prevents hash overwrite on double-tap)
+      //    and was created within the last 30 seconds, enforce cooldown
       const OTP_COOLDOWN_MS = 30 * 1000; // 30 seconds
       if (otpData?.created_at && otpData?.expires_at) {
         const createdAt = new Date(otpData.created_at).getTime();
         const expiresAt = new Date(otpData.expires_at).getTime();
         const now = Date.now();
         if (now - createdAt < OTP_COOLDOWN_MS && now < expiresAt && otpData.attempt_count === 0) {
+          const secondsRemaining = Math.ceil((OTP_COOLDOWN_MS - (now - createdAt)) / 1000);
           logger.info(
-            `Duplicate OTP request for ${phone_number} within cooldown — skipping regeneration`
+            `Duplicate OTP request for ${phone_number} within cooldown — ${secondsRemaining}s remaining`
           );
-          // Return existing TTL without regenerating
-          const userData = await AuthRepository.getUser(phone_number, role);
-          return {
-            expiresIn: TTL,
-            userexists: !!userData,
-            userData: userData?.full_name,
-            otp: null, // Don't resend OTP — app should use the one already received
+          throw {
+            statusCode: 429,
+            code: 'OTP_COOLDOWN',
+            message: `Please wait ${secondsRemaining} seconds before requesting a new OTP.`,
+            remainingSeconds: secondsRemaining,
           };
         }
       }
@@ -645,7 +646,7 @@ export const AuthService = {
       }
 
       // Check if user exists
-      let userData = await UserRepository.findById(decoded.id, UserStatus.DELETED);
+      let userData = await UserRepository.findById(decoded.id, UserStatus.ACTIVE);
 
       if (!userData) {
         const driver = await DriverRepository.findById(decoded.id);
@@ -729,7 +730,7 @@ export const AuthService = {
     return !!user;
   },
 
-  async signOutUser(id: string, device_id: string, role: string): Promise<boolean> {
+  async signOutUser(id: string, device_id?: string, role?: string): Promise<boolean> {
     const signOut = await AuthRepository.signOutUser(id, device_id, role);
     return signOut;
   },

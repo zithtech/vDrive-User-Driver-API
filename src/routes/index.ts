@@ -26,6 +26,7 @@ import driverReferralRoutes from '../modules/driver-referrals/driver-referral.ro
 import supportRoutes from '../modules/support/support.routes';
 import walletRoutes from '../modules/wallet/wallet.routes';
 import kycRoutes from '../modules/kyc/kyc.routes';
+import drivingTestRoutes from '../modules/driving-test/driving-test.routes';
 import { logger } from '../shared/logger';
 
 const router = Router();
@@ -83,6 +84,8 @@ router.use('/support', supportRoutes);
 router.use('/s3', s3Routes);
 router.use('/generate-presigned-url', s3Routes);
 router.use('/kyc/video', kycRoutes);
+router.use('/driving-test', drivingTestRoutes);
+router.use('/admin/driving-tests', drivingTestRoutes);
 
 router.use(isAuthenticated);
 router.use('/trips', tripRoutes);

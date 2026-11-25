@@ -162,6 +162,8 @@ export interface Driver {
   referral_code?: string;
   referred_by?: string;
   subscription_eligibility?: SubscriptionEligibility;
+  welcome_email_sent?: boolean;
+  welcome_email_sent_at?: string;
 }
 
 export interface CreateDriverInput {
@@ -205,6 +207,8 @@ export interface CreateDriverInput {
   referral_code?: string;
   referred_by?: string;
   subscription_eligibility?: SubscriptionEligibility;
+  welcome_email_sent?: boolean;
+  welcome_email_sent_at?: string;
 }
 
 export interface UpdateDriverInput

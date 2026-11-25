@@ -75,4 +75,46 @@ export const PaymentController = {
       return res.status(500).json({ message: 'Failed to create Razorpay order.' });
     }
   },
+
+  async createUPIOrder(req: Request, res: Response): Promise<Response> {
+    const { amount, trip_id, user_id, app } = req.body;
+
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      return res.status(400).json({ success: false, message: 'Valid amount is required.' });
+    }
+
+    try {
+      const order = await PaymentService.createUPIOrder({
+        amount: Number(amount),
+        trip_id,
+        user_id,
+        app,
+      });
+      return res.status(200).json(order);
+    } catch (error: any) {
+      logger.error(`Controller Error (createUPIOrder): ${error}`);
+      return res.status(500).json({ success: false, message: 'Failed to create UPI payment order.' });
+    }
+  },
+
+  async verifyUPIOrderStatus(req: Request, res: Response): Promise<Response> {
+    const { order_id, trip_id, mock_simulate, amount } = req.body;
+
+    if (!order_id) {
+      return res.status(400).json({ success: false, message: 'order_id is required.' });
+    }
+
+    try {
+      const result = await PaymentService.verifyUPIOrderStatus({
+        order_id,
+        trip_id,
+        mock_simulate,
+        amount: amount ? Number(amount) : undefined,
+      });
+      return res.status(200).json(result);
+    } catch (error: any) {
+      logger.error(`Controller Error (verifyUPIOrderStatus): ${error}`);
+      return res.status(500).json({ success: false, message: 'Failed to verify payment status.' });
+    }
+  },
 };

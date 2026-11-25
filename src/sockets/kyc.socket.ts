@@ -39,6 +39,34 @@ export default function registerKycSocket(io: Server, socket: any) {
     }
   });
 
+  // Driver auto-retries KYC call after 2-minute wait (Attempt 2)
+  socket.on('KYC_RETRY_REQUEST', async (data: { sessionId: string; driverId?: string }) => {
+    try {
+      const { sessionId } = data || {};
+      const driverId = data?.driverId || socket.driverId;
+      logger.info(`🔄 [KYC Socket] Driver ${driverId} retry request for session ${sessionId}`);
+      const result = await KycService.retryKyc(sessionId, driverId);
+      socket.emit('KYC_RETRY_SUCCESS', result);
+    } catch (err: any) {
+      logger.error(`[KYC Socket] Error in KYC_RETRY_REQUEST: ${err.message}`);
+      socket.emit('KYC_ERROR', { message: err.message || 'Failed to retry Video KYC' });
+    }
+  });
+
+  // Driver 4-minute wait timeout -> Move to Admin Scheduling
+  socket.on('KYC_TIMEOUT_TO_SCHEDULE', async (data: { sessionId: string; driverId?: string }) => {
+    try {
+      const { sessionId } = data || {};
+      const driverId = data?.driverId || socket.driverId;
+      logger.info(`⏳ [KYC Socket] Driver ${driverId} 4-min timeout to schedule for session ${sessionId}`);
+      const result = await KycService.timeoutToSchedule(sessionId, driverId);
+      socket.emit('KYC_TIMEOUT_TO_SCHEDULE_SUCCESS', result);
+    } catch (err: any) {
+      logger.error(`[KYC Socket] Error in KYC_TIMEOUT_TO_SCHEDULE: ${err.message}`);
+      socket.emit('KYC_ERROR', { message: err.message || 'Failed to transition to scheduling' });
+    }
+  });
+
   // Driver cancels pending KYC request
   socket.on('KYC_CANCEL_REQUEST', async (data: { sessionId: string }) => {
     try {

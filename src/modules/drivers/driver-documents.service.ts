@@ -6,6 +6,7 @@ import { DriverRepository } from './driver.repository';
 import { DriverNotifications } from '../notifications/driver.notification';
 import { DriverOnboardingStatus } from '../../enums/user.enums';
 import { validateDocument } from '../../services/ocr.service';
+import { EmailService } from '../email/email.service';
 
 export class DriverDocumentsService {
   static async getDriverDocuments(driverId: string): Promise<DriverDocument[]> {
@@ -21,10 +22,23 @@ export class DriverDocumentsService {
   static async uploadDocument(
     driverId: string,
     documentType: DocumentType,
-    documentUrl: any
+    documentUrl: any,
+    docNum?: string
   ): Promise<DriverDocument> {
     logger.info(`Upserting document for driver: ${driverId}, type: ${documentType}`);
     const document = await DriverDocumentsRepository.upsert(driverId, documentType, documentUrl);
+
+    // If driver provided document number directly, save it to the document record
+    if (docNum) {
+      try {
+        await DriverDocumentsRepository.updateOCRData(document.id, {
+          ocr_extracted_number: docNum,
+          ocr_status: 'SKIPPED',
+        });
+      } catch (err: any) {
+        logger.warn(`[DriverDocumentsService] Failed to set document number: ${err?.message}`);
+      }
+    }
 
     // --- OCR VALIDATION ---
     // Run AI validation on identity documents (skip selfie, police verification)
@@ -42,7 +56,7 @@ export class DriverDocumentsService {
 
         // Save OCR data to the document record
         await DriverDocumentsRepository.updateOCRData(document.id, {
-          ocr_extracted_number: ocrResult.extractedNumber,
+          ocr_extracted_number: ocrResult.extractedNumber || docNum,
           ocr_extracted_name: ocrResult.extractedName,
           ocr_extracted_expiry: ocrResult.extractedExpiry,
           ocr_status: ocrResult.ocrStatus,
@@ -220,6 +234,13 @@ export class DriverDocumentsService {
         }
       } catch (err: any) {
         logger.error(`Failed to send status update notification: ${err.message}`);
+      }
+
+      // Send Driver Welcome Email if all verifications are approved
+      if (onboardingStatusUpdate === DriverOnboardingStatus.DOCUMENTS_APPROVED) {
+        EmailService.sendDriverWelcomeEmailIfVerified(driverId).catch((err: any) =>
+          logger.error(`Failed to trigger welcome email in syncKYCStatus: ${err.message}`)
+        );
       }
     }
   }

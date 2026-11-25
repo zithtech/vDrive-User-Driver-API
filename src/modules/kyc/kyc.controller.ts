@@ -174,5 +174,150 @@ export class KycController {
       res.status(500).json({ success: false, message: err.message || 'Internal server error' });
     }
   }
+
+  /**
+   * Driver: Retry KYC after 2 minutes (Attempt 2)
+   * POST /api/kyc/video/retry/:sessionId
+   */
+  public static async retryKyc(req: Request, res: Response): Promise<void> {
+    try {
+      const { sessionId } = req.params;
+      const { driverId } = req.body || {};
+      const result = await KycService.retryKyc(sessionId, driverId);
+      res.status(200).json({ success: true, data: result });
+    } catch (err: any) {
+      logger.error('Error in retryKyc controller:', err);
+      res.status(500).json({ success: false, message: err.message || 'Internal server error' });
+    }
+  }
+
+  /**
+   * Driver: Timeout after 4 minutes -> Move to scheduling desk
+   * POST /api/kyc/video/timeout-to-schedule/:sessionId
+   */
+  public static async timeoutToSchedule(req: Request, res: Response): Promise<void> {
+    try {
+      const { sessionId } = req.params;
+      const { driverId } = req.body || {};
+      const result = await KycService.timeoutToSchedule(sessionId, driverId);
+      res.status(200).json({ success: true, data: result });
+    } catch (err: any) {
+      logger.error('Error in timeoutToSchedule controller:', err);
+      res.status(500).json({ success: false, message: err.message || 'Internal server error' });
+    }
+  }
+
+  /**
+   * Admin: Schedule Video KYC appointment for driver
+   * POST /api/kyc/video/schedule-appointment
+   */
+  public static async scheduleAppointment(req: Request, res: Response): Promise<void> {
+    try {
+      const { driverId, sessionId, date, startTime, endTime, slotLabel, officerName, notes, notification } = req.body;
+      if (!driverId || !date || !startTime || !endTime) {
+        res.status(400).json({ success: false, message: 'Driver ID, date, startTime, and endTime are required' });
+        return;
+      }
+      const result = await KycService.scheduleAppointment({
+        driverId,
+        sessionId,
+        date,
+        startTime,
+        endTime,
+        slotLabel: slotLabel || `${startTime} - ${endTime}`,
+        officerName,
+        notes,
+        notification,
+      });
+      res.status(200).json({ success: true, data: result });
+    } catch (err: any) {
+      logger.error('Error in scheduleAppointment controller:', err);
+      res.status(500).json({ success: false, message: err.message || 'Internal server error' });
+    }
+  }
+
+  /**
+   * Driver: Get scheduled Video KYC appointment
+   * GET /api/kyc/video/appointment/:driverId
+   */
+  public static async getAppointment(req: Request, res: Response): Promise<void> {
+    try {
+      const { driverId } = req.params;
+      const result = await KycService.getAppointment(driverId);
+      res.status(200).json({ success: true, data: result });
+    } catch (err: any) {
+      logger.error('Error in getAppointment controller:', err);
+      res.status(500).json({ success: false, message: err.message || 'Internal server error' });
+    }
+  }
+
+  /**
+   * Admin: Get Video KYC call history
+   * GET /api/kyc/video/history
+   */
+  public static async getHistory(_req: Request, res: Response): Promise<void> {
+    try {
+      const history = await KycService.getHistory();
+      res.status(200).json({ success: true, data: history });
+    } catch (err: any) {
+      logger.error('Error in getHistory controller:', err);
+      res.status(500).json({ success: false, message: err.message || 'Internal server error' });
+    }
+  }
+
+  /**
+   * Admin: Get available working time slots (with booking status for given date)
+   * GET /api/kyc/video/slots?date=YYYY-MM-DD
+   */
+  public static async getSlots(req: Request, res: Response): Promise<void> {
+    try {
+      const date = (req.query.date as string) || undefined;
+      const slots = await KycService.getSlots(date);
+      res.status(200).json({ success: true, data: slots });
+    } catch (err: any) {
+      logger.error('Error in getSlots controller:', err);
+      res.status(500).json({ success: false, message: err.message || 'Internal server error' });
+    }
+  }
+
+  /**
+   * Admin: Add new custom availability time slot
+   * POST /api/kyc/video/slots
+   */
+  public static async addSlot(req: Request, res: Response): Promise<void> {
+    try {
+      const { startTime, endTime, label } = req.body;
+      if (!startTime || !endTime) {
+        res.status(400).json({ success: false, message: 'Start and end time required' });
+        return;
+      }
+      const slotId = req.body.id || `slot_${startTime.replace(':', '')}_${endTime.replace(':', '')}`;
+      const result = await KycService.addSlot({
+        id: slotId,
+        startTime,
+        endTime,
+        label: label || `${startTime} – ${endTime}`,
+      });
+      res.status(200).json({ success: true, data: result });
+    } catch (err: any) {
+      logger.error('Error in addSlot controller:', err);
+      res.status(500).json({ success: false, message: err.message || 'Internal server error' });
+    }
+  }
+
+  /**
+   * Admin: Delete availability time slot
+   * DELETE /api/kyc/video/slots/:slotId
+   */
+  public static async deleteSlot(req: Request, res: Response): Promise<void> {
+    try {
+      const { slotId } = req.params;
+      await KycService.deleteSlot(slotId);
+      res.status(200).json({ success: true, message: 'Time slot deleted successfully' });
+    } catch (err: any) {
+      logger.error('Error in deleteSlot controller:', err);
+      res.status(500).json({ success: false, message: err.message || 'Internal server error' });
+    }
+  }
 }
 

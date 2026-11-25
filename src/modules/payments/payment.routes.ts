@@ -19,5 +19,7 @@ router.post('/generic-order', PaymentController.createOrder);
 //user
 router.post('/create-ride-order', PaymentController.createRideOrder);
 router.post('/verify-ride-payment', PaymentController.verifyPayment);
+router.post('/create-upi-order', PaymentController.createUPIOrder);
+router.post('/verify-upi-status', PaymentController.verifyUPIOrderStatus);
 
 export default router;

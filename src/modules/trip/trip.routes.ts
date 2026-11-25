@@ -9,6 +9,8 @@ const router = Router();
 // Admin & Active unified route
 router.get('/', TripController.getAllTripsWithChanges);
 router.get('/active', authMiddleware, TripController.getActiveTrip);
+router.get('/outstation-locations', TripController.getOutstationLocations);
+router.get('/user/:id/billing-summary', TripController.getBillingSummary);
 
 //user-driver
 router.get(
